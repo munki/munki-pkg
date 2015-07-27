@@ -151,7 +151,7 @@ munkipkg makes use of pkgbuild. Therefore the "main" scripts must be named eithe
 
 git does not track empty directories. If you have an empty directory somewhere in your payload/ directory, putting that project in git and then replicating it somewhere else via `git clone` may lead to unexpected results, as your cloned repo will not have the empty directory.
 
-You can work around this issue by adding a file to the "empty" directory that git _will_ track, but that pkgbuild will ignore. pkgbuild by default ignores files that match any of these paths:
+You might be able to work around this issue by adding a file to the "empty" directory that git _will_ track, but that pkgbuild will ignore. pkgbuild by default ignores files that match any of these paths:
 
 ```
 /.svn$
@@ -162,3 +162,5 @@ You can work around this issue by adding a file to the "empty" directory that gi
 ```
 
 Since .DS_Store is in the default .gitignore file, and .git is looked for by git itself, placing an empty .svn or .hg file might be the best workaround for this issue. Git will track the file (and therefore record the directory), and pkgbuild will not include it in the built package.
+
+> UPDATE 27 July 2015: this workaround, does not in fact, work. When pkgbuild prunes the files in the above exclude list, if the pruned file was the only file in the enclosing directory the directory is also pruned from the list (and any parent directories that are now themselves empty). More investigation must be done. For now: beware packages that create empty directories.

@@ -97,7 +97,7 @@ Dictionary of signing options. See below.
 
 ### Package signing
 
-You may sign packages as part of the build process by adding a signing\_info dictionary to the build\_info.plist.
+You may sign packages as part of the build process by adding a signing\_info dictionary to the build\_info.plist. (Note: as of 27 July 2015, this support is untested by the author. Please test and report your experiences!)
 
 ```
     <key>signing_info</key>
@@ -115,6 +115,7 @@ You may sign packages as part of the build process by adding a signing\_info dic
         <true/>
     </dict>
 ```
+
 The only required key/value in the signing_info dictionary is 'identity'.
 
 See the **SIGNED PACKAGES** section of the man page for `pkgbuild` or the **SIGNED PRODUCT ARCHIVES** section of the man page for `productbuild` for more information on the signing options.

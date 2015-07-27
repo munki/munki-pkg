@@ -137,14 +137,14 @@ munkipkg makes use of pkgbuild. Therefore the "main" scripts must be named eithe
 
 ###Additional options
 
-    --export-bom-info
-    This option causes munkipkg to export bom info from the built package to a file named "Bom.txt" in the root of the package project directory. Since git does not normally track ownership, group, or mode of tracked files, and since the "ownership" option to pkgbuild can also result in different owner and group of files included in the package payload, exporting this info into a text file allows you to track this metadata in git (or other version control) as well.
+`--export-bom-info`  
+This option causes munkipkg to export bom info from the built package to a file named "Bom.txt" in the root of the package project directory. Since git does not normally track ownership, group, or mode of tracked files, and since the "ownership" option to pkgbuild can also result in different owner and group of files included in the package payload, exporting this info into a text file allows you to track this metadata in git (or other version control) as well.
 
-    --quiet
-    Causes munkipkg to suppress normal output messages. Errors will still be printed to stderr.
+`--quiet`  
+Causes munkipkg to suppress normal output messages. Errors will still be printed to stderr.
 
-    --help, --version
-    Prints help message and tool version, respectively
+`--help`, `--version`  
+Prints help message and tool version, respectively
 
 
 ##git notes
@@ -163,4 +163,4 @@ You might be able to work around this issue by adding a file to the "empty" dire
 
 Since .DS_Store is in the default .gitignore file, and .git is looked for by git itself, placing an empty .svn or .hg file might be the best workaround for this issue. Git will track the file (and therefore record the directory), and pkgbuild will not include it in the built package.
 
-> UPDATE 27 July 2015: this workaround, does not in fact, work. When pkgbuild prunes the files in the above exclude list, if the pruned file was the only file in the enclosing directory the directory is also pruned from the list (and any parent directories that are now themselves empty). More investigation must be done. For now: beware packages that create empty directories.
+> UPDATE 27 July 2015: this workaround, does not in fact, work. When pkgbuild prunes the files in the above exclude list, if the pruned file was the only file in the enclosing directory the directory is also pruned from the list (and any parent directories that are now themselves empty). More investigation must be done. For now: beware packages that create empty directories (which of course, has implications for pseudo-payload-free packages).

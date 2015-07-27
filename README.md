@@ -70,37 +70,29 @@ This is an XML-formatted plist (binary plists are not currently supported) that 
 
 ###build-info.plist keys
 
-**distribution_style**
+**distribution_style**  
+Boolean: true or false. Defaults to false. If present and true, package built will be a "distribution-style" package.
 
-    Boolean: true or false. Defaults to false. If present and true, package built will be a "distribution-style" package.
+**identifier**  
+String containing the package identifier. If this is missing, one is constructed using the name of the package project directory.
 
-**identifier**
+**name**  
+String containing the package name. If this is missing, one is constructed using the name of the package project directory.
 
-    String containing the package identifier. If this is missing, one is constructed using the name of the package project directory.
+**ownership**  
+String. One of "recommended", "preserve", or "preserve-other". Defaults to "recommended". See the man page for pkgbuild for a description of the ownership options.
 
-**name**
+**postinstall_action**  
+String. One of "none", "logout", or "restart". Defaults to "none".
 
-    String containing the package name. If this is missing, one is constructed using the name of the package project directory.
+**suppress\_bundle\_relocation**  
+Boolean: true or false. Defaults to true. If present and false, bundle relocation will be allowed, which causes the Installer to update bundles found in locations other than their default location. For deploying software in a managed environment, this is rarely what you want.
 
-**ownership**
+**version**  
+A string representation of the version number. Defaults to "1.0".
 
-    String. One of "recommended", "preserve", or "preserve-other". Defaults to "recommended". See the man page for pkgbuild for a description of the ownership options.
-
-**postinstall_action**
-
-    String. One of "none", "logout", or "restart". Defaults to "none".
-
-**suppress\_bundle\_relocation**
-
-    Boolean: true or false. Defaults to true. If present and false, bundle relocation will be allowed, which causes the Installer to update bundles found in locations other than their default location. For deploying software in a managed environment, this is rarely what you want.
-
-**version**
-
-    A string representation of the version number. Defaults to "1.0".
-
-**signing_info**
-
-    Dictionary of signing options. See below.
+**signing_info**  
+Dictionary of signing options. See below.
 
 
 ### Package signing
@@ -123,8 +115,9 @@ You may sign packages as part of the build process by adding a signing\_info dic
         <true/>
     </dict>
 ```
+The only required key/value in the signing_info dictionary is 'identity'.
 
-See the **SIGNED PACKAGES** section of the man page for `pkgbuild` or the **SIGNED PRODUCT ARCHIVES** section of the man page for `productbuild` for more information on the signing options. The only required key/value in the signing_info dictionary is 'identity'.
+See the **SIGNED PACKAGES** section of the man page for `pkgbuild` or the **SIGNED PRODUCT ARCHIVES** section of the man page for `productbuild` for more information on the signing options.
 
 
 ###Scripts

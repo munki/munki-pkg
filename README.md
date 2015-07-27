@@ -18,12 +18,15 @@ munkipkg builds flat packages using Apple's pkgbuild and productbuild tools.
 munkipkg builds packages from a "package project directory". At its simplest, a package project directory is a directory containing a "payload" directory, which itself contains the files to be packaged. More typically, the directory also contains a "build-info.plist" file containing specific settings for the build. The package project directory may also contain a "scripts" directory containing any scripts (and, optionally, additional files used by the scripts) to be included in the package.
 
 
-###Package project directory layout:
-
+###Package project directory layout
+```
 project_dir/
     build-info.plist
     payload/
     scripts/
+```
+
+###Creating a new project
 
 munkipkg can create an empty package project directory for you:
 

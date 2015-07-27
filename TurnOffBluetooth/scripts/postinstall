@@ -1,0 +1,17 @@
+#!/bin/sh
+
+# turn off Bluetooth
+if [ "$3" == "/" ]; then
+    TARGETVOL=""
+else
+    TARGETVOL="$3"
+fi
+
+BLUETOOTHPREFS="$TARGETVOL/Library/Preferences/com.apple.Bluetooth"
+/usr/bin/defaults write "$BLUETOOTHPREFS" ControllerPowerState -int 0
+
+if [ "$3" == "/" ]; then
+    # we're installing on the startup disk, so
+    # restart bluetooth daemon to pick up our changes
+    /usr/bin/killall -HUP blued
+fi

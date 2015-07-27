@@ -1,0 +1,404 @@
+#!/usr/bin/python
+# encoding: utf-8
+"""
+munkipkg
+
+A tool for making packages from projects that can be easily managed in a
+version control system like git.
+
+"""
+# Copyright 2015 Greg Neagle.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
+import plistlib
+import optparse
+import os
+import subprocess
+import sys
+import tempfile
+
+from xml.parsers.expat import ExpatError
+
+VERSION = "0.1"
+LSBOM = "/usr/bin/lsbom"
+PKGBUILD = "/usr/bin/pkgbuild"
+PKGUTIL = "/usr/sbin/pkgutil"
+PRODUCTBUILD = "/usr/bin/productbuild"
+
+GITIGNORE_DEFAULT = """# .DS_Store files!
+.DS_Store
+
+# our build directory
+build/
+"""
+
+BUILD_INFO_PLIST = "build-info.plist"
+REQUIREMENTS_PLIST = "product-requirements.plist"
+
+
+class BuildError(Exception):
+    '''Base Exception for errors in this domain'''
+    pass
+
+
+def read_build_info_plist(plist_path):
+    '''Reads and validates data in the build_info plist'''
+    build_info = None
+    try:
+        build_info = plistlib.readPlist(plist_path)
+    except ExpatError, err:
+        raise BuildError(
+            "%s is not a valid xml plist: %s" % (plist_path, str(err)))
+    valid_values = {
+        'ownership': ['recommended', 'preserve', 'preserve-other'],
+        'postinstall_action': ['none', 'logout', 'restart'],
+        'suppress_bundle_relocation': [True, False],
+        'distribution_style': [True, False],
+    }
+    for key in valid_values:
+        if key in build_info:
+            if build_info[key] not in valid_values[key]:
+                print >> sys.stderr, (
+                    "%s key '%s' has illegal value: %s"
+                    % (plist_path, key, repr(build_info[key])))
+                print >> sys.stderr, (
+                    'Legal values are: %s' % valid_values[key])
+                return None
+    return build_info
+
+
+def make_component_property_list(build_info, options):
+    """Use pkgbuild --analyze to build a component property list; then
+    turn off package relocation, Return path to the resulting plist."""
+    toolname = os.path.basename(sys.argv[0])
+    component_plist = os.path.join(build_info['tmpdir'], 'component.plist')
+    cmd = [PKGBUILD]
+    if options.quiet:
+        cmd.append('--quiet')
+    cmd.extend(["--analyze", "--root", build_info['payload'], component_plist])
+    try:
+        returncode = subprocess.call(cmd)
+    except OSError, err:
+        raise BuildError(
+            "pkgbuild execution failed with error code %d: %s"
+            % (err.errno, err.strerror))
+    if returncode:
+        raise BuildError(
+            "pkgbuild failed with exit code %d: %s"
+            % (returncode, " ".join(str(err).split())))
+    try:
+        plist = plistlib.readPlist(component_plist)
+    except ExpatError, err:
+        raise BuildError("Couldn't read %s" % component_plist)
+    # plist is an array of dicts, iterate through
+    for bundle in plist:
+        if bundle.get("BundleIsRelocatable"):
+            bundle["BundleIsRelocatable"] = False
+            if not options.quiet:
+                print ('%s: Turning off bundle relocation for %s'
+                       % (toolname, bundle['RootRelativeBundlePath']))
+    try:
+        plistlib.writePlist(plist, component_plist)
+    except BaseException, err:
+        raise BuildError("Couldn't write %s" % component_plist)
+    return component_plist
+
+
+def make_pkginfo(build_info, options):
+    '''Creates a stub PackageInfo file for use with pkgbuild'''
+    toolname = os.path.basename(sys.argv[0])
+    if build_info['postinstall_action'] != 'none' and not options.quiet:
+        print ("%s: Setting postinstall-action to %s"
+               % (toolname, build_info['postinstall_action']))
+    pkginfo_path = os.path.join(build_info['tmpdir'], 'PackageInfo')
+    pkginfo_text = ('<?xml version="1.0" encoding="utf-8" standalone="no"?>'
+                    '<pkg-info postinstall-action="%s"/>'
+                    % build_info['postinstall_action'])
+    try:
+        fileobj = open(pkginfo_path, mode='w')
+        fileobj.write(pkginfo_text)
+        fileobj.close()
+        return pkginfo_path
+    except (OSError, IOError), err:
+        raise BuildError('Couldn\'t create PackageInfo file: %s' % err)
+
+
+def default_build_info(project_dir):
+    '''Return dict with default build info values'''
+    info = {}
+    info['ownership'] = "recommended"
+    info['suppress_bundle_relocation'] = True
+    info['postinstall_action'] = 'none'
+    basename = os.path.basename(project_dir).replace(" ", "")
+    info['name'] = basename + '.pkg'
+    info['identifier'] = "com.github.munki.pkg." + basename
+    info['version'] = "1.0"
+    info['distribution_style'] = False
+    return info
+
+
+def get_build_info(project_dir):
+    '''Return dict with build info'''
+    info = default_build_info(project_dir)
+    info['project_dir'] = project_dir
+    # override default values with values from BUILD_INFO_PLIST
+    supported_keys = ['name', 'identifier', 'version', 'ownership',
+                      'suppress_bundle_relocation', 'postinstall_action',
+                      'distribution_style']
+    build_plist = os.path.join(project_dir, BUILD_INFO_PLIST)
+    if os.path.exists(build_plist):
+        plist_info = read_build_info_plist(build_plist)
+        for key in supported_keys:
+            if key in plist_info:
+                info[key] = plist_info[key]
+    return info
+
+
+def add_project_subdirs(build_info):
+    '''Adds and validates project subdirs to build_info'''
+    # validate payload and scripts dirs
+    project_dir = build_info['project_dir']
+    payload_dir = os.path.join(project_dir, 'payload')
+    scripts_dir = os.path.join(project_dir, 'scripts')
+    if not os.path.isdir(payload_dir):
+        payload_dir = None
+    if not os.path.isdir(scripts_dir):
+        scripts_dir = None
+    elif os.listdir(scripts_dir) in [[], ['.DS_Store']]:
+        # scripts dir is empty; don't include it as part of build
+        scripts_dir = None
+    if not payload_dir and not scripts_dir:
+        raise BuildError(
+            "%s does not contain a payload folder or a scripts folder."
+            % project_dir)
+
+    # make sure build directory exists
+    build_dir = os.path.join(project_dir, 'build')
+    if not os.path.exists(build_dir):
+        os.mkdir(build_dir)
+    elif not os.path.isdir(build_dir):
+        raise BuildError("%s is not a directory." % build_dir)
+
+    build_info['payload'] = payload_dir
+    build_info['scripts'] = scripts_dir
+    build_info['build_dir'] = build_dir
+    build_info['tmpdir'] = tempfile.mkdtemp()
+
+
+def create_template_project(project_dir):
+    '''Create an empty pkg project directory with default settings'''
+    toolname = os.path.basename(sys.argv[0])
+    if os.path.exists(project_dir):
+        print >> sys.stderr, "%s already exists!" % project_dir
+        return -1
+    payload_dir = os.path.join(project_dir, 'payload')
+    scripts_dir = os.path.join(project_dir, 'scripts')
+    build_dir = os.path.join(project_dir, 'build')
+    build_info_plist = os.path.join(project_dir, BUILD_INFO_PLIST)
+    gitignore_file = os.path.join(project_dir, '.gitignore')
+    try:
+        os.mkdir(project_dir)
+        os.mkdir(payload_dir)
+        os.mkdir(scripts_dir)
+        os.mkdir(build_dir)
+        build_info = default_build_info(project_dir)
+        plistlib.writePlist(build_info, build_info_plist)
+        fileobj = open(gitignore_file, "w")
+        fileobj.write(GITIGNORE_DEFAULT)
+        fileobj.close()
+        print "%s: Created new package project at %s" % (toolname, project_dir)
+    except OSError, err:
+        print >> sys.stderr, str(err)
+        return -1
+
+
+def export_bom_info(build_info, options):
+    '''Extract the bom file from the built package and export its info to the
+    project directory'''
+    pkg_path = os.path.join(build_info['build_dir'], build_info['name'])
+    toolname = os.path.basename(sys.argv[0])
+    cmd = [PKGUTIL, '--bom', pkg_path]
+    if not options.quiet:
+        print "%s: Extracting bom file from %s" % (toolname, pkg_path)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    (output, stderr) = proc.communicate()
+    if proc.returncode:
+        raise BuildError(stderr.strip())
+    try:
+        bomfile = output.strip()
+        bom_list_file = os.path.join(build_info['project_dir'], 'Bom.txt')
+        if not options.quiet:
+            print "%s: Exporting bom info to %s" % (toolname, bom_list_file)
+        fileobj = open(bom_list_file, mode='w')
+        cmd = [LSBOM, bomfile]
+        proc = subprocess.Popen(cmd, stdout=fileobj, stderr=subprocess.PIPE)
+        _, stderr = proc.communicate()
+        if proc.returncode:
+            fileobj.close()
+            raise BuildError(stderr.strip())
+        fileobj.close()
+        os.unlink(bomfile)
+    except OSError, err:
+        raise BuildError(
+            'Could not export bom info to project directory: %s' % err)
+
+
+def build_pkg(build_info, options):
+    '''Use pkgbuild tool to build our package'''
+    cmd = [PKGBUILD,
+           '--ownership', build_info['ownership'],
+           '--identifier', build_info['identifier'],
+           '--version', build_info['version'],
+           '--info', build_info['pkginfo_path']]
+    if build_info['payload']:
+        cmd.extend(['--root', build_info['payload']])
+    else:
+        cmd.extend(['--nopayload'])
+    if build_info['component_plist']:
+        cmd.extend(['--component-plist', build_info['component_plist']])
+    if build_info['scripts']:
+        cmd.extend(['--scripts', build_info['scripts']])
+    if options.quiet:
+        cmd.append('--quiet')
+    cmd.append(os.path.join(build_info['build_dir'], build_info['name']))
+
+    retcode = subprocess.call(cmd)
+    if retcode:
+        raise BuildError("Package creation failed.")
+
+
+def build_distribution_pkg(build_info, options):
+    '''Converts component pkg to dist pkg'''
+    pkginputname = os.path.join(build_info['build_dir'], build_info['name'])
+    distoutputname = os.path.join(
+        build_info['build_dir'], 'Dist-' + build_info['name'])
+    if os.path.exists(distoutputname):
+        retcode = subprocess.call(["/bin/rm", "-rf", distoutputname])
+        if retcode:
+            raise BuildError(
+                'Error removing existing %s: %s' % (distoutputname, retcode))
+
+    cmd = [PRODUCTBUILD]
+    if options.quiet:
+        cmd.append('--quiet')
+    # if there is a PRE-INSTALL REQUIREMENTS PROPERTY LIST, use it
+    requirements_plist = os.path.join(
+        build_info['project_dir'], REQUIREMENTS_PLIST)
+    if os.path.exists(requirements_plist):
+        cmd.extend(['--product', requirements_plist])
+    cmd.extend(['--package', pkginputname, distoutputname])
+    retcode = subprocess.call(cmd)
+    if retcode:
+        raise BuildError("Distribution package creation failed.")
+    try:
+        toolname = os.path.basename(sys.argv[0])
+        if not options.quiet:
+            print ("%s: Removing component package %s"
+                   % (toolname, pkginputname))
+        os.unlink(pkginputname)
+        if not options.quiet:
+            print ("%s: Renaming distribution package %s to %s"
+                   % (toolname, distoutputname, pkginputname))
+        os.rename(distoutputname, pkginputname)
+    except OSError, err:
+        raise BuildError(err)
+
+
+def build(project_dir, options):
+    '''Build our package'''
+
+    # validate project dir
+    if not os.path.isdir(project_dir):
+        print >> sys.stderr, ("%s is not a directory." % project_dir)
+        return -1
+
+    try:
+        build_info = get_build_info(project_dir)
+        add_project_subdirs(build_info)
+
+        build_info['component_plist'] = None
+        # analyze root and turn off bundle relocation
+        if build_info['payload'] and build_info['suppress_bundle_relocation']:
+            build_info['component_plist'] = make_component_property_list(
+                build_info, options)
+
+        # make a stub PkgInfo file
+        build_info['pkginfo_path'] = make_pkginfo(build_info, options)
+
+        # remove any pre-existing pkg at the outputname path
+        outputname = os.path.join(build_info['build_dir'], build_info['name'])
+        if os.path.exists(outputname):
+            retcode = subprocess.call(["/bin/rm", "-rf", outputname])
+            if retcode:
+                raise BuildError("Could not remove existing %s" % outputname)
+
+        # build the pkg
+        build_pkg(build_info, options)
+
+        # export bom info if requested
+        if options.export_bom_info:
+            export_bom_info(build_info, options)
+
+        # convert pkg to distribution-style if requested
+        if build_info['distribution_style']:
+            build_distribution_pkg(build_info, options)
+
+        # cleanup temp dir
+        _ = subprocess.call(["/bin/rm", "-rf", build_info['tmpdir']])
+        return 0
+
+    except BuildError, err:
+        print >> sys.stderr, str(err)
+        if build_info.get('tmpdir'):
+            # cleanup temp dir
+            _ = subprocess.call(["/bin/rm", "-rf", build_info['tmpdir']])
+        return -1
+
+
+def main():
+    '''Main'''
+    usage = """usage: %prog [options] pkg_project_directory
+       Builds a package from the contents of a pkg_project_directory."""
+    parser = optparse.OptionParser(usage=usage, version=VERSION)
+    parser.add_option('--create', action='store_true',
+                      help='Creates a new empty project with default settings '
+                           'at given path.')
+    parser.add_option('--export-bom-info', action='store_true',
+                      help='Extracts the Bill-Of-Materials file from the '
+                           'output package and exports it as Bom.txt under the '
+                           'pkg_project_folder. Useful for tracking owner, '
+                           'group and mode of the payload in git.')
+    parser.add_option('--quiet', action='store_true',
+                      help='Inhibits status messages on stdout. '
+                           'Any error messages are still sent to stderr.')
+    options, arguments = parser.parse_args()
+
+    if len(arguments) == 0:
+        parser.print_usage()
+        sys.exit(0)
+
+    if len(arguments) > 1:
+        print >> sys.stderr, (
+            "Only a single package project can be built at a time!")
+        sys.exit(-1)
+
+    if options.create:
+        result = create_template_project(arguments[0])
+    else:
+        result = build(arguments[0], options)
+    sys.exit(result)
+
+if __name__ == '__main__':
+    main()

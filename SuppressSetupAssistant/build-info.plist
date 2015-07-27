@@ -6,6 +6,8 @@
 	<true/>
 	<key>identifier</key>
 	<string>com.github.munki.pkg.SuppressSetupAssistant</string>
+	<key>install_location</key>
+	<string>/</string>
 	<key>name</key>
 	<string>SuppressSetupAssistant.pkg</string>
 	<key>ownership</key>

@@ -6,6 +6,8 @@
 	<false/>
 	<key>identifier</key>
 	<string>com.github.munki.pkg.TurnOffBluetooth</string>
+	<key>install_location</key>
+	<string>/</string>
 	<key>name</key>
 	<string>TurnOffBluetooth.pkg</string>
 	<key>ownership</key>

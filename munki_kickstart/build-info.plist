@@ -6,6 +6,8 @@
 	<true/>
 	<key>identifier</key>
 	<string>com.github.munki.pkg.munki_kickstart</string>
+	<key>install_location</key>
+	<string>/</string>
 	<key>name</key>
 	<string>munki_kickstart.pkg</string>
 	<key>ownership</key>

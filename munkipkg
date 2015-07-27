@@ -144,6 +144,7 @@ def default_build_info(project_dir):
     basename = os.path.basename(project_dir).replace(" ", "")
     info['name'] = basename + '.pkg'
     info['identifier'] = "com.github.munki.pkg." + basename
+    info['install_location'] = '/'
     info['version'] = "1.0"
     info['distribution_style'] = False
     return info
@@ -155,7 +156,8 @@ def get_build_info(project_dir):
     info['project_dir'] = project_dir
     # override default values with values from BUILD_INFO_PLIST
     supported_keys = ['name', 'identifier', 'version', 'ownership',
-                      'suppress_bundle_relocation', 'postinstall_action',
+                      'install_location', 'postinstall_action',
+                      'suppress_bundle_relocation',
                       'distribution_style', 'signing_info']
     build_plist = os.path.join(project_dir, BUILD_INFO_PLIST)
     if os.path.exists(build_plist):
@@ -291,6 +293,8 @@ def build_pkg(build_info, options):
            '--info', build_info['pkginfo_path']]
     if build_info['payload']:
         cmd.extend(['--root', build_info['payload']])
+        if build_info.get('install_location'):
+            cmd.extend(['--install-location', build_info['install_location']])
     else:
         cmd.extend(['--nopayload'])
     if build_info['component_plist']:
@@ -302,7 +306,7 @@ def build_pkg(build_info, options):
     if not build_info.get('distribution_style'):
         add_signing_options_to_cmd(cmd, build_info, options)
     cmd.append(os.path.join(build_info['build_dir'], build_info['name']))
-
+    print cmd
     retcode = subprocess.call(cmd)
     if retcode:
         raise BuildError("Package creation failed.")
@@ -351,7 +355,10 @@ def build(project_dir, options):
     '''Build our package'''
 
     # validate project dir
-    if not os.path.isdir(project_dir):
+    if not os.path.exists(project_dir):
+        print >> sys.stderr, ("%s: Project not found." % project_dir)
+        return -1
+    elif not os.path.isdir(project_dir):
         print >> sys.stderr, ("%s is not a directory." % project_dir)
         return -1
 

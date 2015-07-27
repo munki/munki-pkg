@@ -57,6 +57,8 @@ This is an XML-formatted plist (binary plists are not currently supported) that 
     <false/>
     <key>identifier</key>
     <string>com.github.munki.pkg.Foo</string>
+    <key>install_location</key>
+    <string>/</string>
     <key>name</key>
     <string>Foo.pkg</string>
     <key>ownership</key>
@@ -78,6 +80,9 @@ Boolean: true or false. Defaults to false. If present and true, package built wi
 
 **identifier**  
 String containing the package identifier. If this is missing, one is constructed using the name of the package project directory.
+
+**install_location**  
+String. Path to the intended install location of the payload on the target disk. Defaults to "/".
 
 **name**  
 String containing the package name. If this is missing, one is constructed using the name of the package project directory.

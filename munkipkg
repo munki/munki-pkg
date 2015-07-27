@@ -31,7 +31,7 @@ import tempfile
 
 from xml.parsers.expat import ExpatError
 
-VERSION = "0.1"
+VERSION = "0.2"
 LSBOM = "/usr/bin/lsbom"
 PKGBUILD = "/usr/bin/pkgbuild"
 PKGUTIL = "/usr/sbin/pkgutil"
@@ -156,7 +156,7 @@ def get_build_info(project_dir):
     # override default values with values from BUILD_INFO_PLIST
     supported_keys = ['name', 'identifier', 'version', 'ownership',
                       'suppress_bundle_relocation', 'postinstall_action',
-                      'distribution_style']
+                      'distribution_style', 'signing_info']
     build_plist = os.path.join(project_dir, BUILD_INFO_PLIST)
     if os.path.exists(build_plist):
         plist_info = read_build_info_plist(build_plist)
@@ -255,6 +255,33 @@ def export_bom_info(build_info, options):
             'Could not export bom info to project directory: %s' % err)
 
 
+def add_signing_options_to_cmd(cmd, build_info, options):
+    '''If build_info contains signing options, add them to the cmd'''
+    if 'signing_info' in build_info:
+        if not options.quiet:
+            toolname = os.path.basename(sys.argv[0])
+            print "%s: Adding package signing info to command" % toolname
+        signing_info = build_info['signing_info']
+        if 'identity' in signing_info:
+            cmd.extend(['--sign', signing_info['identity']])
+        else:
+            raise BuildError('Missing identity in signing info!')
+        if 'keychain' in signing_info:
+            cmd.extend(['--keychain', signing_info['keychain']])
+        if 'additional_cert_names' in signing_info:
+            additional_cert_names = signing_info['additional_cert_names']
+            # convert single string to list
+            if isinstance(additional_cert_names, basestring):
+                additional_cert_names = [additional_cert_names]
+            for cert_name in additional_cert_names:
+                cmd.extend(['--cert', cert_name])
+        if 'timestamp' in signing_info:
+            if signing_info['timestamp']:
+                cmd.extend(['--timestamp'])
+            else:
+                cmd.extend(['--timestamp=none'])
+
+
 def build_pkg(build_info, options):
     '''Use pkgbuild tool to build our package'''
     cmd = [PKGBUILD,
@@ -272,6 +299,8 @@ def build_pkg(build_info, options):
         cmd.extend(['--scripts', build_info['scripts']])
     if options.quiet:
         cmd.append('--quiet')
+    if not build_info.get('distribution_style'):
+        add_signing_options_to_cmd(cmd, build_info, options)
     cmd.append(os.path.join(build_info['build_dir'], build_info['name']))
 
     retcode = subprocess.call(cmd)
@@ -293,12 +322,14 @@ def build_distribution_pkg(build_info, options):
     cmd = [PRODUCTBUILD]
     if options.quiet:
         cmd.append('--quiet')
+    add_signing_options_to_cmd(cmd, build_info, options)
     # if there is a PRE-INSTALL REQUIREMENTS PROPERTY LIST, use it
     requirements_plist = os.path.join(
         build_info['project_dir'], REQUIREMENTS_PLIST)
     if os.path.exists(requirements_plist):
         cmd.extend(['--product', requirements_plist])
     cmd.extend(['--package', pkginputname, distoutputname])
+
     retcode = subprocess.call(cmd)
     if retcode:
         raise BuildError("Distribution package creation failed.")

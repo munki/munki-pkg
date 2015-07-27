@@ -98,6 +98,34 @@ This is an XML-formatted plist (binary plists are not currently supported) that 
 
     A string representation of the version number. Defaults to "1.0".
 
+**signing_info**
+
+    Dictionary of signing options. See below.
+
+
+### Package signing
+
+You may sign packages as part of the build process by adding a signing\_info dictionary to the build\_info.plist.
+
+```
+    <key>signing_info</key>
+    <dict>
+        <key>identity</key>
+        <string>Signing Identity Common Name</string>
+        <key>keychain</key>
+        <string>/path/to/SpecialKeychain</string>
+        <key>additional_cert_names</key>
+        <array>
+            <string>Intermediate CA Common Name 1</string>
+            <string>Intermediate CA Common Name 2</string>
+        </array>
+        <key>timestamp</key>
+        <true/>
+    </dict>
+```
+
+See the **SIGNED PACKAGES** section of the man page for `pkgbuild` or the **SIGNED PRODUCT ARCHIVES** section of the man page for `productbuild` for more information on the signing options. The only required key/value in the signing_info dictionary is 'identity'.
+
 
 ###Scripts
 

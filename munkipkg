@@ -73,6 +73,7 @@ def read_build_info_plist(plist_path):
         'postinstall_action': ['none', 'logout', 'restart'],
         'suppress_bundle_relocation': [True, False],
         'distribution_style': [True, False],
+        'distribution_style_rename': [True, False],
     }
     for key in valid_values:
         if key in build_info:
@@ -154,6 +155,7 @@ def default_build_info(project_dir):
     info['install_location'] = '/'
     info['version'] = "1.0"
     info['distribution_style'] = False
+    info['distribution_style_rename'] = True
     return info
 
 
@@ -165,7 +167,8 @@ def get_build_info(project_dir):
     supported_keys = ['name', 'identifier', 'version', 'ownership',
                       'install_location', 'postinstall_action',
                       'suppress_bundle_relocation',
-                      'distribution_style', 'signing_info']
+                      'distribution_style',
+                      'distribution_style_rename', 'signing_info']
     build_plist = os.path.join(project_dir, BUILD_INFO_PLIST)
     if os.path.exists(build_plist):
         plist_info = read_build_info_plist(build_plist)
@@ -388,6 +391,7 @@ def build_pkg(build_info, options):
     if not build_info.get('distribution_style'):
         add_signing_options_to_cmd(cmd, build_info, options)
     cmd.append(os.path.join(build_info['build_dir'], build_info['name']))
+    #     cmd.append(os.path.join(build_info['build_dir'], build_info['name'] + build_info['version']))
     print cmd
     retcode = subprocess.call(cmd)
     if retcode:
@@ -424,12 +428,13 @@ def build_distribution_pkg(build_info, options):
         display("%s: Removing component package %s" % (toolname, pkginputname),
                 options.quiet)
         os.unlink(pkginputname)
-        display("%s: Renaming distribution package %s to %s"
-                % (toolname, distoutputname, pkginputname), options.quiet)
-        os.rename(distoutputname, pkginputname)
+        if build_info['distribution_style_rename']:
+            '''Renames package if requested'''
+            display("%s: Renaming distribution package %s to %s"
+                    % (toolname, distoutputname, pkginputname), options.quiet)
+            os.rename(distoutputname, pkginputname)
     except OSError, err:
         raise BuildError(err)
-
 
 def build(project_dir, options):
     '''Build our package'''

@@ -170,6 +170,6 @@ You can create this file when building package by adding the `--export-bom-info`
 
 A recommended workflow would be to build a project with `--export-bom-info` and add the Bom.txt file to the next git commit in order to preserve the data that git does not normally track.
 
-After doing a `git clone` or `git pull` operation, you can then use `munkipkg --sync project_name` to cause munkipkg to read the Bom.txt file, using the info within to create any missing directories and to set file and directory modes to those recorded in the bom.
+After doing a `git clone` or `git pull` operation, you can then use `munkipkg --sync project_name` to cause munkipkg to read the Bom.txt file and use the info within to create any missing directories and to set file and directory modes to those recorded in the bom.
 
 This workflow is not ideal, as it requires you to remember two new manual steps (`munkipkg --export` before doing a git commit and `munkipkg --sync` after doing a `git clone` or `git pull`) but is necessary to preserve data that git otherwise ignores.

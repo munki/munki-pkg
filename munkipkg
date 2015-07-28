@@ -25,6 +25,7 @@ version control system like git.
 import plistlib
 import optparse
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -51,6 +52,12 @@ REQUIREMENTS_PLIST = "product-requirements.plist"
 class BuildError(Exception):
     '''Base Exception for errors in this domain'''
     pass
+
+
+def display(message, quiet):
+    '''Print message to stdout unless quiet is True'''
+    if not quiet:
+        print message
 
 
 def read_build_info_plist(plist_path):
@@ -106,9 +113,9 @@ def make_component_property_list(build_info, options):
     for bundle in plist:
         if bundle.get("BundleIsRelocatable"):
             bundle["BundleIsRelocatable"] = False
-            if not options.quiet:
-                print ('%s: Turning off bundle relocation for %s'
-                       % (toolname, bundle['RootRelativeBundlePath']))
+            display('%s: Turning off bundle relocation for %s'
+                    % (toolname, bundle['RootRelativeBundlePath']),
+                    options.quiet)
     try:
         plistlib.writePlist(plist, component_plist)
     except BaseException, err:
@@ -166,6 +173,81 @@ def get_build_info(project_dir):
             if key in plist_info:
                 info[key] = plist_info[key]
     return info
+
+
+def sync_from_bom_info(project_dir, options):
+    '''Uses Bom.txt to apply modes to files in payload dir and create any
+    missing empty directories, since git does not track these.'''
+
+    # possible to-do: preflight check: if there are files missing
+    # (and not just directories), or there are extra files or directories,
+    # bail without making any changes
+
+    # possible to-do: a refinement of the above preflight check
+    # -- also check file checksums
+
+    # possible to-do: detect if we are effectively running as root,
+    # if so, also sync owner and group
+
+    bom_list_file = os.path.join(project_dir, 'Bom.txt')
+    payload_dir = os.path.join(project_dir, 'payload')
+
+    if not os.path.exists(bom_list_file):
+        print >> sys.stderr, (
+            "Can't sync with bom info: no Bom.txt found in project directory.")
+        return -1
+
+    returncode = 0
+    changes_made = 0
+
+    try:
+        with open(bom_list_file) as fileref:
+            while True:
+                item = fileref.readline()
+                if not item:
+                    break
+                if item == '\n':
+                    # shouldn't be any empty lines in Bom.txt, but...
+                    continue
+                parts = item.strip('\n').split('\t')
+                path = parts[0].lstrip('./')
+                full_mode = parts[1]
+                desired_mode = int(full_mode[-4:], 8)
+                payload_path = os.path.join(payload_dir, path)
+                if os.path.exists(payload_path):
+                    # file exists, check permission bits and adjust if needed
+                    current_mode = stat.S_IMODE(os.stat(payload_path).st_mode)
+                    if current_mode != desired_mode:
+                        display("Changing mode of %s to %s"
+                                % (payload_path, oct(desired_mode)),
+                                options.quiet)
+                        os.chmod(payload_path, desired_mode)
+                        changes_made += 1
+                elif full_mode.startswith('4'):
+                    # file doesn't exist and it's a directory; re-create it
+                    display("Creating %s with mode %s"
+                            % (payload_path, oct(desired_mode)),
+                            options.quiet)
+                    os.mkdir(payload_path, desired_mode)
+                    changes_made += 1
+                    continue
+                else:
+                    # missing file. This is a problem.
+                    print >> sys.stderr, (
+                        "File %s is missing in payload" % payload_path)
+                    returncode = -1
+                    break
+
+    except (OSError, ValueError), err:
+        print >> sys.stderr, str(err)
+        return -1
+
+    if returncode == 0 and not options.quiet:
+        if changes_made:
+            print "Sync successful."
+        else:
+            print "Sync successful: no changes needed."
+    return returncode
 
 
 def add_project_subdirs(build_info):
@@ -232,17 +314,17 @@ def export_bom_info(build_info, options):
     pkg_path = os.path.join(build_info['build_dir'], build_info['name'])
     toolname = os.path.basename(sys.argv[0])
     cmd = [PKGUTIL, '--bom', pkg_path]
-    if not options.quiet:
-        print "%s: Extracting bom file from %s" % (toolname, pkg_path)
+    display("%s: Extracting bom file from %s" % (toolname, pkg_path),
+            options.quiet)
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    (output, stderr) = proc.communicate()
+    (stdout, stderr) = proc.communicate()
     if proc.returncode:
         raise BuildError(stderr.strip())
     try:
-        bomfile = output.strip()
+        bomfile = stdout.strip()
         bom_list_file = os.path.join(build_info['project_dir'], 'Bom.txt')
-        if not options.quiet:
-            print "%s: Exporting bom info to %s" % (toolname, bom_list_file)
+        display("%s: Exporting bom info to %s" % (toolname, bom_list_file),
+                options.quiet)
         fileobj = open(bom_list_file, mode='w')
         cmd = [LSBOM, bomfile]
         proc = subprocess.Popen(cmd, stdout=fileobj, stderr=subprocess.PIPE)
@@ -259,10 +341,10 @@ def export_bom_info(build_info, options):
 
 def add_signing_options_to_cmd(cmd, build_info, options):
     '''If build_info contains signing options, add them to the cmd'''
+    toolname = os.path.basename(sys.argv[0])
     if 'signing_info' in build_info:
-        if not options.quiet:
-            toolname = os.path.basename(sys.argv[0])
-            print "%s: Adding package signing info to command" % toolname
+        display("%s: Adding package signing info to command" % toolname,
+                options.quiet)
         signing_info = build_info['signing_info']
         if 'identity' in signing_info:
             cmd.extend(['--sign', signing_info['identity']])
@@ -339,13 +421,11 @@ def build_distribution_pkg(build_info, options):
         raise BuildError("Distribution package creation failed.")
     try:
         toolname = os.path.basename(sys.argv[0])
-        if not options.quiet:
-            print ("%s: Removing component package %s"
-                   % (toolname, pkginputname))
+        display("%s: Removing component package %s" % (toolname, pkginputname),
+                options.quiet)
         os.unlink(pkginputname)
-        if not options.quiet:
-            print ("%s: Renaming distribution package %s to %s"
-                   % (toolname, distoutputname, pkginputname))
+        display("%s: Renaming distribution package %s to %s"
+                % (toolname, distoutputname, pkginputname), options.quiet)
         os.rename(distoutputname, pkginputname)
     except OSError, err:
         raise BuildError(err)
@@ -353,14 +433,6 @@ def build_distribution_pkg(build_info, options):
 
 def build(project_dir, options):
     '''Build our package'''
-
-    # validate project dir
-    if not os.path.exists(project_dir):
-        print >> sys.stderr, ("%s: Project not found." % project_dir)
-        return -1
-    elif not os.path.isdir(project_dir):
-        print >> sys.stderr, ("%s is not a directory." % project_dir)
-        return -1
 
     try:
         build_info = get_build_info(project_dir)
@@ -405,6 +477,16 @@ def build(project_dir, options):
         return -1
 
 
+def valid_project_dir(project_dir):
+    '''validate project dir. Returns a boolean'''
+    if not os.path.exists(project_dir):
+        print >> sys.stderr, ("%s: Project not found." % project_dir)
+        return False
+    elif not os.path.isdir(project_dir):
+        print >> sys.stderr, ("%s is not a directory." % project_dir)
+        return False
+    return True
+
 def main():
     '''Main'''
     usage = """usage: %prog [options] pkg_project_directory
@@ -421,6 +503,11 @@ def main():
     parser.add_option('--quiet', action='store_true',
                       help='Inhibits status messages on stdout. '
                            'Any error messages are still sent to stderr.')
+    parser.add_option('--sync', action='store_true',
+                      help='Use Bom.txt to set modes of files in payload '
+                           'directory and create missing empty directories. '
+                           'Useful after a git clone or pull. No build is '
+                           'performed.')
     options, arguments = parser.parse_args()
 
     if len(arguments) == 0:
@@ -434,6 +521,14 @@ def main():
 
     if options.create:
         result = create_template_project(arguments[0])
+        sys.exit(result)
+
+    # options past here require a valid project_dir
+    if not valid_project_dir(arguments[0]):
+        sys.exit(-1)
+
+    if options.sync:
+        result = sync_from_bom_info(arguments[0], options)
     else:
         result = build(arguments[0], options)
     sys.exit(result)

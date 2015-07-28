@@ -147,20 +147,20 @@ Causes munkipkg to suppress normal output messages. Errors will still be printed
 Prints help message and tool version, respectively
 
 
-##git notes
+##Important git notes
 
-git does not track empty directories. If you have an empty directory somewhere in your payload/ directory, putting that project in git and then replicating it somewhere else via `git clone` may lead to unexpected results, as your cloned repo will not have the empty directory.
+Git was designed to track source code. Its focus is tracking changes in the contents of files. It's a not perfect fit for tracking the parts making up a package. Specifically, git doesn't track owner or group of files or directories, and does not track any mode bits except for the execute bit for the owner. Git also does not track empty directories.
 
-You might be able to work around this issue by adding a file to the "empty" directory that git _will_ track, but that pkgbuild will ignore. pkgbuild by default ignores files that match any of these paths:
+This could be a problem if you want to store package project directories in git and `git clone` them; the clone operation will fail to replicate empty directories in the package project and will fail to set the correct mode for files and directories. (Owner and mode are less of an issue if you use ownership=recommended for your pkgbuild options.)
 
-```
-/.svn$
-/CVS$
-/.git$
-/.hg$
-/.DS_Store$
-```
+The solution to this problem is the Bom.txt file, which lists all the files and directories in the package, along with their mode, owner and group.
 
-Since .DS_Store is in the default .gitignore file, and .git is looked for by git itself, placing an empty .svn or .hg file might be the best workaround for this issue. Git will track the file (and therefore record the directory), and pkgbuild will not include it in the built package.
+This file can be tracked by git.
 
-> UPDATE 27 July 2015: this workaround, does not in fact, work. When pkgbuild prunes the files in the above exclude list, if the pruned file was the only file in the enclosing directory the directory is also pruned from the list (and any parent directories that are now themselves empty). More investigation must be done. For now: beware packages that create empty directories (which of course, has implications for pseudo-payload-free packages).
+You can create this file when building package by adding the --export-bom-info option. After the package is built, the Bom is extracted and `lsbom` is used to read its contents, which are written to "Bom.txt" at the root of the package project directory.
+
+So a recommended workflow would be to build a project with --export-bom-info and add the Bom.txt file to the next git commit in order to preserve the data that git does not normally track.
+
+When doing a `git clone` or `git pull` operation, you could use `munkipkg --sync project_name` to cause munkipkg to read the Bom.txt file, using the info within to create any missing directories and to set file and directory modes to those recorded in the bom.
+
+This workflow is not ideal, as it requires you to remember two new manual steps (`munkipkg --export` before doing a git commit and `munkipkg --sync` after doing a `git clone` or `git pull`) but is necessary to preserve data that git otherwise ignores.

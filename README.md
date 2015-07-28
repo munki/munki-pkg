@@ -115,7 +115,6 @@ If the payload folder exists, but is empty, you'll get a "pseudo-payload-free" p
 ###Package signing
 
 You may sign packages as part of the build process by adding a signing\_info dictionary to the build\_info.plist.  
-> (Note: as of 27 July 2015, package signing support is untested by the author. Please test and report your experiences!)
 
 ```
     <key>signing_info</key>

@@ -158,7 +158,7 @@ Prints help message and tool version, respectively
 
 ##Important git notes
 
-Git was designed to track source code. Its focus is tracking changes in the contents of files. It's a not perfect fit for tracking the parts making up a package. Specifically, git doesn't track owner or group of files or directories, and does not track any mode bits except for the execute bit for the owner. Git also does not track empty directories.
+Git was designed to track source code. Its focus is tracking changes in the contents of files. It's not perfect fit for tracking the parts making up a package. Specifically, git doesn't track owner or group of files or directories, and does not track any mode bits except for the execute bit for the owner. Git also does not track empty directories.
 
 This could be a problem if you want to store package project directories in git and `git clone` them; the clone operation will fail to replicate empty directories in the package project and will fail to set the correct mode for files and directories. (Owner and mode are less of an issue if you use ownership=recommended for your pkgbuild options.)
 

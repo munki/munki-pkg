@@ -164,12 +164,12 @@ This could be a problem if you want to store package project directories in git 
 
 The solution to this problem is the Bom.txt file, which lists all the files and directories in the package, along with their mode, owner and group.
 
-This file can be tracked by git.
+This file (Bom.txt) can be tracked by git.
 
-You can create this file when building package by adding the --export-bom-info option. After the package is built, the Bom is extracted and `lsbom` is used to read its contents, which are written to "Bom.txt" at the root of the package project directory.
+You can create this file when building package by adding the `--export-bom-info` option. After the package is built, the Bom is extracted and `lsbom` is used to read its contents, which are written to "Bom.txt" at the root of the package project directory.
 
-So a recommended workflow would be to build a project with --export-bom-info and add the Bom.txt file to the next git commit in order to preserve the data that git does not normally track.
+A recommended workflow would be to build a project with `--export-bom-info` and add the Bom.txt file to the next git commit in order to preserve the data that git does not normally track.
 
-When doing a `git clone` or `git pull` operation, you could use `munkipkg --sync project_name` to cause munkipkg to read the Bom.txt file, using the info within to create any missing directories and to set file and directory modes to those recorded in the bom.
+After doing a `git clone` or `git pull` operation, you can then use `munkipkg --sync project_name` to cause munkipkg to read the Bom.txt file, using the info within to create any missing directories and to set file and directory modes to those recorded in the bom.
 
 This workflow is not ideal, as it requires you to remember two new manual steps (`munkipkg --export` before doing a git commit and `munkipkg --sync` after doing a `git clone` or `git pull`) but is necessary to preserve data that git otherwise ignores.

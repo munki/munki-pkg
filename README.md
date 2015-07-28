@@ -145,7 +145,7 @@ munkipkg makes use of pkgbuild. Therefore the "main" scripts must be named eithe
 
 ###Additional options
 
-`--create`
+`--create`  
 Creates a new empty template package project. See [**Creating a new project**](#creating-a-new-project).
 
 `--export-bom-info`  

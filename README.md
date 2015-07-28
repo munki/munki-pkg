@@ -103,7 +103,16 @@ A string representation of the version number. Defaults to "1.0".
 Dictionary of signing options. See below.
 
 
-### Package signing
+###Payload-free packages
+
+You can use this tool to build payload-free packages in two variants.
+
+If there is no payload folder at all, `pkgbuild` is called with the `--nopayload` option. The resulting package will not leave a receipt when installed.
+
+If the payload folder exists, but is empty, you'll get a "pseudo-payload-free" package. No files will be installed, but a receipt will be left. This is often the more useful option if you need to track if the package has been installed on machines you manage.
+
+
+###Package signing
 
 You may sign packages as part of the build process by adding a signing\_info dictionary to the build\_info.plist.  
 > (Note: as of 27 July 2015, package signing support is untested by the author. Please test and report your experiences!)

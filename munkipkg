@@ -391,7 +391,6 @@ def build_pkg(build_info, options):
     if not build_info.get('distribution_style'):
         add_signing_options_to_cmd(cmd, build_info, options)
     cmd.append(os.path.join(build_info['build_dir'], build_info['name']))
-    #     cmd.append(os.path.join(build_info['build_dir'], build_info['name'] + build_info['version']))
     print cmd
     retcode = subprocess.call(cmd)
     if retcode:

@@ -160,7 +160,7 @@ Prints help message and tool version, respectively
 
 Git was designed to track source code. Its focus is tracking changes in the contents of files. It's not a perfect fit for tracking the parts making up a package. Specifically, git doesn't track owner or group of files or directories, and does not track any mode bits except for the execute bit for the owner. Git also does not track empty directories.
 
-This could be a problem if you want to store package project directories in git and `git clone` them; the clone operation will fail to replicate empty directories in the package project and will fail to set the correct mode for files and directories. (Owner and mode are less of an issue if you use ownership=recommended for your pkgbuild options.)
+This could be a problem if you want to store package project directories in git and `git clone` them; the clone operation will fail to replicate empty directories in the package project and will fail to set the correct mode for files and directories. (Owner and group are less of an issue if you use ownership=recommended for your pkgbuild options.)
 
 The solution to this problem is the Bom.txt file, which lists all the files and directories in the package, along with their mode, owner and group.
 

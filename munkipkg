@@ -61,14 +61,8 @@ def display(message, quiet):
         print message
 
 
-def read_build_info_plist(plist_path):
-    '''Reads and validates data in the build_info plist'''
-    build_info = None
-    try:
-        build_info = plistlib.readPlist(plist_path)
-    except ExpatError, err:
-        raise BuildError(
-            "%s is not a valid xml plist: %s" % (plist_path, str(err)))
+
+def validate_build_info_keys(build_info, file_path):
     valid_values = {
         'ownership': ['recommended', 'preserve', 'preserve-other'],
         'postinstall_action': ['none', 'logout', 'restart'],
@@ -80,10 +74,21 @@ def read_build_info_plist(plist_path):
             if build_info[key] not in valid_values[key]:
                 print >> sys.stderr, (
                     "%s key '%s' has illegal value: %s"
-                    % (plist_path, key, repr(build_info[key])))
+                    % (file_path, key, repr(build_info[key])))
                 print >> sys.stderr, (
                     'Legal values are: %s' % valid_values[key])
                 return None
+
+
+def read_build_info_plist(plist_path):
+    '''Reads and validates data in the build_info plist'''
+    build_info = None
+    try:
+        build_info = plistlib.readPlist(plist_path)
+    except ExpatError, err:
+        raise BuildError(
+            "%s is not a valid xml plist: %s" % (plist_path, str(err)))
+    validate_build_info_keys(build_info, plist_path)
     return build_info
 
 
@@ -96,21 +101,7 @@ def read_build_info_json(json_path):
     except ExpatError, err:
         raise BuildError(
             "%s is not a valid json file: %s" % (json_path, str(err)))
-    valid_values = {
-        'ownership': ['recommended', 'preserve', 'preserve-other'],
-        'postinstall_action': ['none', 'logout', 'restart'],
-        'suppress_bundle_relocation': [True, False],
-        'distribution_style': [True, False],
-    }
-    for key in valid_values:
-        if key in build_info:
-            if build_info[key] not in valid_values[key]:
-                print >> sys.stderr, (
-                    "%s key '%s' has illegal value: %s"
-                    % (plist_path, key, repr(build_info[key])))
-                print >> sys.stderr, (
-                    'Legal values are: %s' % valid_values[key])
-                return None
+    validate_build_info_keys(build_info, json_path)
     return build_info
 
 

@@ -89,8 +89,10 @@ Alternately you may specify build-info in JSON format by creating a build-info.j
     "install_location": "/"
 }
 ```
+When creating a new project with the `--create` option, adding `--json` will cause munkipkg to create the build-info file in JSON format.
 
-###build-info.plist keys
+
+###build-info keys
 
 **distribution_style**  
 Boolean: true or false. Defaults to false. If present and true, package built will be a "distribution-style" package.
@@ -131,7 +133,7 @@ If the payload folder exists, but is empty, you'll get a "pseudo-payload-free" p
 
 ###Package signing
 
-You may sign packages as part of the build process by adding a signing\_info dictionary to the build\_info.plist.  
+You may sign packages as part of the build process by adding a signing\_info dictionary to the build\_info.plist:
 
 ```
     <key>signing_info</key>
@@ -148,6 +150,18 @@ You may sign packages as part of the build process by adding a signing\_info dic
         <key>timestamp</key>
         <true/>
     </dict>
+```
+
+or, in JSON format in a build-info.json file:
+
+```
+    "signing_info": {
+        "identity": "Signing Identity Common Name",
+        "keychain": "/path/to/SpecialKeychain"
+        "additional_cert_names": ["Intermediate CA Common Name 1",
+                                  "Intermediate CA Common Name 2"],
+        "timestamp": true,
+    }
 ```
 
 The only required key/value in the signing_info dictionary is 'identity'.

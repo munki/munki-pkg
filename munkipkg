@@ -306,7 +306,8 @@ def add_project_subdirs(build_info):
     build_info['tmpdir'] = tempfile.mkdtemp()
 
 
-def create_template_project(project_dir):
+
+def create_template_project(project_dir, options):
     '''Create an empty pkg project directory with default settings'''
     toolname = os.path.basename(sys.argv[0])
     if os.path.exists(project_dir):
@@ -315,7 +316,6 @@ def create_template_project(project_dir):
     payload_dir = os.path.join(project_dir, 'payload')
     scripts_dir = os.path.join(project_dir, 'scripts')
     build_dir = os.path.join(project_dir, 'build')
-    build_info_plist = os.path.join(project_dir, "%s.plist" % BUILD_INFO_FILE)
     gitignore_file = os.path.join(project_dir, '.gitignore')
     try:
         os.mkdir(project_dir)
@@ -323,7 +323,17 @@ def create_template_project(project_dir):
         os.mkdir(scripts_dir)
         os.mkdir(build_dir)
         build_info = default_build_info(project_dir)
-        plistlib.writePlist(build_info, build_info_plist)
+        if options.json:
+            build_info_json = os.path.join(
+                project_dir, "%s.json" % BUILD_INFO_FILE)
+            with open(build_info_json, 'w') as json_file:
+                json.dump(
+                    build_info, json_file, ensure_ascii=True,
+                    indent=4, separators=(',', ': '))
+        else:
+            build_info_plist = os.path.join(
+                project_dir, "%s.plist" % BUILD_INFO_FILE)
+            plistlib.writePlist(build_info, build_info_plist)
         fileobj = open(gitignore_file, "w")
         fileobj.write(GITIGNORE_DEFAULT)
         fileobj.close()
@@ -520,19 +530,22 @@ def main():
     parser.add_option('--create', action='store_true',
                       help='Creates a new empty project with default settings '
                            'at given path.')
+    parser.add_option('--json', action='store_true',
+                      help='Create default build-info file in JSON format. '
+                           'Useful only with --create option.')
     parser.add_option('--export-bom-info', action='store_true',
                       help='Extracts the Bill-Of-Materials file from the '
                            'output package and exports it as Bom.txt under the '
                            'pkg_project_folder. Useful for tracking owner, '
                            'group and mode of the payload in git.')
-    parser.add_option('--quiet', action='store_true',
-                      help='Inhibits status messages on stdout. '
-                           'Any error messages are still sent to stderr.')
     parser.add_option('--sync', action='store_true',
                       help='Use Bom.txt to set modes of files in payload '
                            'directory and create missing empty directories. '
                            'Useful after a git clone or pull. No build is '
                            'performed.')
+    parser.add_option('--quiet', action='store_true',
+                      help='Inhibits status messages on stdout. '
+                           'Any error messages are still sent to stderr.')
     options, arguments = parser.parse_args()
 
     if len(arguments) == 0:
@@ -545,7 +558,7 @@ def main():
         sys.exit(-1)
 
     if options.create:
-        result = create_template_project(arguments[0])
+        result = create_template_project(arguments[0], options)
         sys.exit(result)
 
     # options past here require a valid project_dir

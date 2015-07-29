@@ -63,6 +63,7 @@ def display(message, quiet):
 
 
 def validate_build_info_keys(build_info, file_path):
+    '''Validates the data read from build_info.(plist|json)'''
     valid_values = {
         'ownership': ['recommended', 'preserve', 'preserve-other'],
         'postinstall_action': ['none', 'logout', 'restart'],
@@ -315,7 +316,7 @@ def create_template_project(project_dir):
     payload_dir = os.path.join(project_dir, 'payload')
     scripts_dir = os.path.join(project_dir, 'scripts')
     build_dir = os.path.join(project_dir, 'build')
-    build_info_plist = os.path.join(project_dir, BUILD_INFO_PLIST)
+    build_info_plist = os.path.join(project_dir, "%s.plist" % BUILD_INFO_FILE)
     gitignore_file = os.path.join(project_dir, '.gitignore')
     try:
         os.mkdir(project_dir)

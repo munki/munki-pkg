@@ -23,6 +23,7 @@ version control system like git.
 
 
 import plistlib
+import json
 import optparse
 import os
 import stat
@@ -45,7 +46,7 @@ GITIGNORE_DEFAULT = """# .DS_Store files!
 build/
 """
 
-BUILD_INFO_PLIST = "build-info.plist"
+BUILD_INFO_FILE = "build-info"
 REQUIREMENTS_PLIST = "product-requirements.plist"
 
 
@@ -68,6 +69,33 @@ def read_build_info_plist(plist_path):
     except ExpatError, err:
         raise BuildError(
             "%s is not a valid xml plist: %s" % (plist_path, str(err)))
+    valid_values = {
+        'ownership': ['recommended', 'preserve', 'preserve-other'],
+        'postinstall_action': ['none', 'logout', 'restart'],
+        'suppress_bundle_relocation': [True, False],
+        'distribution_style': [True, False],
+    }
+    for key in valid_values:
+        if key in build_info:
+            if build_info[key] not in valid_values[key]:
+                print >> sys.stderr, (
+                    "%s key '%s' has illegal value: %s"
+                    % (plist_path, key, repr(build_info[key])))
+                print >> sys.stderr, (
+                    'Legal values are: %s' % valid_values[key])
+                return None
+    return build_info
+
+
+def read_build_info_json(json_path):
+    '''Reads and validates data in the build_info json file'''
+    build_info = None
+    try:
+        with open(json_path, 'r') as json_file:
+            build_info = json.load(json_file)
+    except ExpatError, err:
+        raise BuildError(
+            "%s is not a valid json file: %s" % (json_path, str(err)))
     valid_values = {
         'ownership': ['recommended', 'preserve', 'preserve-other'],
         'postinstall_action': ['none', 'logout', 'restart'],
@@ -166,12 +194,18 @@ def get_build_info(project_dir):
                       'install_location', 'postinstall_action',
                       'suppress_bundle_relocation',
                       'distribution_style', 'signing_info']
-    build_plist = os.path.join(project_dir, BUILD_INFO_PLIST)
-    if os.path.exists(build_plist):
-        plist_info = read_build_info_plist(build_plist)
+    build_file = os.path.join(project_dir, BUILD_INFO_FILE)
+    if os.path.exists("%s.plist" % build_file):
+        plist_info = read_build_info_plist("%s.plist" % build_file)
         for key in supported_keys:
             if key in plist_info:
                 info[key] = plist_info[key]
+    elif os.path.exists("%s.json" % build_file):
+        build_info = read_build_info_json("%s.json" % build_file)
+
+        for key in supported_keys:
+            if key in build_info:
+                info[key] = build_info[key]
     return info
 
 

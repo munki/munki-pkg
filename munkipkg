@@ -33,7 +33,7 @@ import tempfile
 
 from xml.parsers.expat import ExpatError
 
-VERSION = "0.3"
+VERSION = "0.4"
 LSBOM = "/usr/bin/lsbom"
 PKGBUILD = "/usr/bin/pkgbuild"
 PKGUTIL = "/usr/sbin/pkgutil"
@@ -59,7 +59,6 @@ def display(message, quiet):
     '''Print message to stdout unless quiet is True'''
     if not quiet:
         print message
-
 
 
 def validate_build_info_keys(build_info, file_path):
@@ -99,7 +98,7 @@ def read_build_info_json(json_path):
     try:
         with open(json_path, 'r') as json_file:
             build_info = json.load(json_file)
-    except ExpatError, err:
+    except ValueError, err:
         raise BuildError(
             "%s is not a valid json file: %s" % (json_path, str(err)))
     validate_build_info_keys(build_info, json_path)

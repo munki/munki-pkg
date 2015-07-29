@@ -73,6 +73,23 @@ This is an XML-formatted plist (binary plists are not currently supported) that 
 </plist>
 ```
 
+###build-info.json (optional)
+
+Alternately you may specify build-info in JSON format by creating a build-info.json file. The above file would look like this in JSON format:
+
+```
+{
+    "ownership": "recommended",
+    "suppress_bundle_relocation": true,
+    "identifier": "com.github.munki.pkg.Foo",
+    "postinstall_action": "none",
+    "distribution_style": false,
+    "version": "1.0",
+    "name": "Foo.pkg",
+    "install_location": "/"
+}
+```
+
 ###build-info.plist keys
 
 **distribution_style**  
@@ -158,7 +175,7 @@ This option causes munkipkg to read the Bom.txt file, and use its information to
 Causes munkipkg to suppress normal output messages. Errors will still be printed to stderr.
 
 `--help`, `--version`  
-Prints help message and tool version, respectively
+Prints help message and tool version, respectively.
 
 
 ##Important git notes

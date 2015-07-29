@@ -43,10 +43,13 @@ Once you have a project directory, you simply copy the files you wish to package
 
 Causes munkipkg to build the package defined in package_project_directory. The built package is created in a build/ directory inside the project directory.
 
+###build-info
 
-###build-info.plist
+Build options are stored in a file at the root of the package project. XML plist and JSON formats are supported. A build-info file is not strictly required, and a build will use default values if this file is missing.
 
-This is an XML-formatted plist (binary plists are not currently supported) that provides additional options for building the package. For a new project created with `munkipkg --create Foo`, the build-info.plist looks like this:
+####build-info.plist
+
+This must be in XML (text) format. Binary plists are not supported. For a new project created with `munkipkg --create Foo`, the build-info.plist looks like this:
 
 ```
 <?xml version="1.0" encoding="UTF-8"?>
@@ -73,9 +76,9 @@ This is an XML-formatted plist (binary plists are not currently supported) that 
 </plist>
 ```
 
-###build-info.json (optional)
+####build-info.json
 
-Alternately you may specify build-info in JSON format by creating a build-info.json file. The above file would look like this in JSON format:
+Alternately, you may specify build-info in JSON format. A new project created with `munkipkg --create --json Foo` would have this build-info.json file:
 
 ```
 {
@@ -89,7 +92,7 @@ Alternately you may specify build-info in JSON format by creating a build-info.j
     "install_location": "/"
 }
 ```
-When creating a new project with the `--create` option, adding `--json` will cause munkipkg to create the build-info file in JSON format.
+If both build-info.plist and build-info.json are present, the plist file will be used; the json file will be ignored.
 
 
 ###build-info keys

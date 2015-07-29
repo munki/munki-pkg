@@ -149,7 +149,7 @@ def default_build_info(project_dir):
     info['suppress_bundle_relocation'] = True
     info['postinstall_action'] = 'none'
     basename = os.path.basename(project_dir).replace(" ", "")
-    info['name'] = basename + '.pkg'
+    info['name'] = basename
     info['identifier'] = "com.github.munki.pkg." + basename
     info['install_location'] = '/'
     info['version'] = "1.0"
@@ -172,6 +172,9 @@ def get_build_info(project_dir):
         for key in supported_keys:
             if key in plist_info:
                 info[key] = plist_info[key]
+
+    if info.has_key('name'):
+        info['name'] = info['name'].replace('.pkg', '')
     return info
 
 
@@ -311,7 +314,8 @@ def create_template_project(project_dir):
 def export_bom_info(build_info, options):
     '''Extract the bom file from the built package and export its info to the
     project directory'''
-    pkg_path = os.path.join(build_info['build_dir'], build_info['name'])
+    pkg_path = os.path.join(build_info['build_dir'], "%s-%s.pkg" %
+                           (build_info['name'], build_info['version']))
     toolname = os.path.basename(sys.argv[0])
     cmd = [PKGUTIL, '--bom', pkg_path]
     display("%s: Extracting bom file from %s" % (toolname, pkg_path),
@@ -387,7 +391,8 @@ def build_pkg(build_info, options):
         cmd.append('--quiet')
     if not build_info.get('distribution_style'):
         add_signing_options_to_cmd(cmd, build_info, options)
-    cmd.append(os.path.join(build_info['build_dir'], build_info['name']))
+    cmd.append(os.path.join(build_info['build_dir'], "%s-%s.pkg" %
+                           (build_info['name'], build_info['version'])))
     print cmd
     retcode = subprocess.call(cmd)
     if retcode:
@@ -396,7 +401,8 @@ def build_pkg(build_info, options):
 
 def build_distribution_pkg(build_info, options):
     '''Converts component pkg to dist pkg'''
-    pkginputname = os.path.join(build_info['build_dir'], build_info['name'])
+    pkginputname = os.path.join(build_info['build_dir'], "%s-%s.pkg" %
+                               (build_info['name'], build_info['version']))
     distoutputname = os.path.join(
         build_info['build_dir'], 'Dist-' + build_info['name'])
     if os.path.exists(distoutputname):
@@ -448,7 +454,8 @@ def build(project_dir, options):
         build_info['pkginfo_path'] = make_pkginfo(build_info, options)
 
         # remove any pre-existing pkg at the outputname path
-        outputname = os.path.join(build_info['build_dir'], build_info['name'])
+        outputname = os.path.join(build_info['build_dir'], "%s-%s.pkg" %
+                                 (build_info['name'], build_info['version']))
         if os.path.exists(outputname):
             retcode = subprocess.call(["/bin/rm", "-rf", outputname])
             if retcode:

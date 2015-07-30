@@ -6,7 +6,9 @@ munkipkg is a simple tool for building packages in a consistent, repeatable mann
 
 Files, scripts, and metadata are stored in a way that is easy to track and manage using a version control system like git.
 
-Another tool that solves a similar problem is Joe Block's The Luggage (https://github.com/unixorn/luggage). If you are happily using The Luggage, you can probably safely ignore this tool.
+Another tool that solves a similar problem is Joe Block's **The Luggage** (https://github.com/unixorn/luggage). If you are happily using The Luggage, you can probably safely ignore this tool.
+
+**autopkg** (https://github.com/autopkg/autopkg) is another tool that has some overlap here. It's definitely possible to use autopkg to build packages from files and scripts on your local disk. See https://managingosx.wordpress.com/2015/07/30/using-autopkg-for-general-purpose-packaging/ and https://github.com/gregneagle/autopkg-packaging-demo for examples on how to do this.
 
 
 ##Basic operation

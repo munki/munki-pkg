@@ -186,17 +186,14 @@ def get_build_info(project_dir):
                       'suppress_bundle_relocation',
                       'distribution_style', 'signing_info']
     build_file = os.path.join(project_dir, BUILD_INFO_FILE)
+    file_info = {}
     if os.path.exists("%s.plist" % build_file):
-        plist_info = read_build_info_plist("%s.plist" % build_file)
-        for key in supported_keys:
-            if key in plist_info:
-                info[key] = plist_info[key]
+        file_info = read_build_info_plist("%s.plist" % build_file)
     elif os.path.exists("%s.json" % build_file):
-        build_info = read_build_info_json("%s.json" % build_file)
-
-        for key in supported_keys:
-            if key in build_info:
-                info[key] = build_info[key]
+        file_info = read_build_info_json("%s.json" % build_file)
+    for key in supported_keys:
+        if key in file_info:
+            info[key] = file_info[key]
     return info
 
 
@@ -469,6 +466,7 @@ def build_distribution_pkg(build_info, options):
 def build(project_dir, options):
     '''Build our package'''
 
+    build_info = {}
     try:
         build_info = get_build_info(project_dir)
         add_project_subdirs(build_info)

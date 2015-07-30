@@ -167,7 +167,7 @@ def default_build_info(project_dir):
     info['ownership'] = "recommended"
     info['suppress_bundle_relocation'] = True
     info['postinstall_action'] = 'none'
-    basename = os.path.basename(project_dir).replace(" ", "")
+    basename = os.path.basename(project_dir.strip('/')).replace(" ", "")
     info['name'] = basename + '.pkg'
     info['identifier'] = "com.github.munki.pkg." + basename
     info['install_location'] = '/'
@@ -191,9 +191,10 @@ def get_build_info(project_dir):
         file_info = read_build_info_plist("%s.plist" % build_file)
     elif os.path.exists("%s.json" % build_file):
         file_info = read_build_info_json("%s.json" % build_file)
-    for key in supported_keys:
-        if key in file_info:
-            info[key] = file_info[key]
+    if file_info:
+        for key in supported_keys:
+            if key in file_info:
+                info[key] = file_info[key]
     return info
 
 

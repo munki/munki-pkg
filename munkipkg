@@ -21,19 +21,21 @@ version control system like git.
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
-import plistlib
+import glob
 import json
 import optparse
 import os
+import plistlib
 import stat
 import subprocess
 import sys
 import tempfile
 
+from xml.dom import minidom
 from xml.parsers.expat import ExpatError
 
 VERSION = "0.4"
+DITTO = "/usr/bin/ditto"
 LSBOM = "/usr/bin/lsbom"
 PKGBUILD = "/usr/bin/pkgbuild"
 PKGUTIL = "/usr/sbin/pkgutil"
@@ -48,11 +50,30 @@ build/
 
 BUILD_INFO_FILE = "build-info"
 REQUIREMENTS_PLIST = "product-requirements.plist"
+BOM_TEXT_FILE = "Bom.txt"
 
-
-class BuildError(Exception):
+class MunkiPkgError(Exception):
     '''Base Exception for errors in this domain'''
     pass
+
+
+class BuildError(MunkiPkgError):
+    '''Exception for build errors'''
+    pass
+
+
+class PkgImportError(MunkiPkgError):
+    '''Exception for pkg import errors'''
+    pass
+
+
+def unlink_if_possible(pathname):
+    '''Attempt to remove pathname but don't raise an execption if it fails'''
+    try:
+        os.unlink(pathname)
+    except OSError, err:
+        print >> sys.stderr, (
+            "WARNING: could not remove %s: %s" % (pathname, err))
 
 
 def display(message, quiet):
@@ -167,7 +188,7 @@ def default_build_info(project_dir):
     info['ownership'] = "recommended"
     info['suppress_bundle_relocation'] = True
     info['postinstall_action'] = 'none'
-    basename = os.path.basename(project_dir.strip('/')).replace(" ", "")
+    basename = os.path.basename(project_dir.rstrip('/')).replace(" ", "")
     info['name'] = basename + '.pkg'
     info['identifier'] = "com.github.munki.pkg." + basename
     info['install_location'] = '/'
@@ -212,12 +233,13 @@ def sync_from_bom_info(project_dir, options):
     # possible to-do: detect if we are effectively running as root,
     # if so, also sync owner and group
 
-    bom_list_file = os.path.join(project_dir, 'Bom.txt')
+    bom_list_file = os.path.join(project_dir, BOM_TEXT_FILE)
     payload_dir = os.path.join(project_dir, 'payload')
 
     if not os.path.exists(bom_list_file):
         print >> sys.stderr, (
-            "Can't sync with bom info: no Bom.txt found in project directory.")
+            "Can't sync with bom info: no %s found in project directory."
+            % BOM_TEXT_FILE)
         return -1
 
     returncode = 0
@@ -232,7 +254,7 @@ def sync_from_bom_info(project_dir, options):
                 if item == '\n':
                     # shouldn't be any empty lines in Bom.txt, but...
                     continue
-                parts = item.strip('\n').split('\t')
+                parts = item.rstrip('\n').split('\t')
                 path = parts[0].lstrip('./')
                 full_mode = parts[1]
                 desired_mode = int(full_mode[-4:], 8)
@@ -304,6 +326,23 @@ def add_project_subdirs(build_info):
     build_info['tmpdir'] = tempfile.mkdtemp()
 
 
+def write_build_info(build_info, project_dir, options):
+    '''writes out our build-info file in preferred format'''
+    try:
+        if options.json:
+            build_info_json = os.path.join(
+                project_dir, "%s.json" % BUILD_INFO_FILE)
+            with open(build_info_json, 'w') as json_file:
+                json.dump(
+                    build_info, json_file, ensure_ascii=True,
+                    indent=4, separators=(',', ': '))
+        else:
+            build_info_plist = os.path.join(
+                project_dir, "%s.plist" % BUILD_INFO_FILE)
+            plistlib.writePlist(build_info, build_info_plist)
+    except OSError, err:
+        raise MunkiPkgError(err)
+
 
 def create_template_project(project_dir, options):
     '''Create an empty pkg project directory with default settings'''
@@ -321,24 +360,28 @@ def create_template_project(project_dir, options):
         os.mkdir(scripts_dir)
         os.mkdir(build_dir)
         build_info = default_build_info(project_dir)
-        if options.json:
-            build_info_json = os.path.join(
-                project_dir, "%s.json" % BUILD_INFO_FILE)
-            with open(build_info_json, 'w') as json_file:
-                json.dump(
-                    build_info, json_file, ensure_ascii=True,
-                    indent=4, separators=(',', ': '))
-        else:
-            build_info_plist = os.path.join(
-                project_dir, "%s.plist" % BUILD_INFO_FILE)
-            plistlib.writePlist(build_info, build_info_plist)
+        write_build_info(build_info, project_dir, options)
         fileobj = open(gitignore_file, "w")
         fileobj.write(GITIGNORE_DEFAULT)
         fileobj.close()
         print "%s: Created new package project at %s" % (toolname, project_dir)
-    except OSError, err:
+    except (OSError, MunkiPkgError), err:
         print >> sys.stderr, str(err)
         return -1
+
+
+def export_bom(bomfile, project_dir):
+    '''Exports bom to text format. Returns returncode from lsbom'''
+    destination = os.path.join(project_dir, BOM_TEXT_FILE)
+    try:
+        with open(destination, mode='w') as fileobj:
+            cmd = [LSBOM, bomfile]
+            proc = subprocess.Popen(cmd, stdout=fileobj, stderr=subprocess.PIPE)
+            _, stderr = proc.communicate()
+            if proc.returncode:
+                raise MunkiPkgError(stderr)
+    except OSError, err:
+        raise MunkiPkgError(err)
 
 
 def export_bom_info(build_info, options):
@@ -353,23 +396,13 @@ def export_bom_info(build_info, options):
     (stdout, stderr) = proc.communicate()
     if proc.returncode:
         raise BuildError(stderr.strip())
-    try:
-        bomfile = stdout.strip()
-        bom_list_file = os.path.join(build_info['project_dir'], 'Bom.txt')
-        display("%s: Exporting bom info to %s" % (toolname, bom_list_file),
-                options.quiet)
-        fileobj = open(bom_list_file, mode='w')
-        cmd = [LSBOM, bomfile]
-        proc = subprocess.Popen(cmd, stdout=fileobj, stderr=subprocess.PIPE)
-        _, stderr = proc.communicate()
-        if proc.returncode:
-            fileobj.close()
-            raise BuildError(stderr.strip())
-        fileobj.close()
-        os.unlink(bomfile)
-    except OSError, err:
-        raise BuildError(
-            'Could not export bom info to project directory: %s' % err)
+
+    bomfile = stdout.strip()
+    destination = os.path.join(build_info['project_dir'], BOM_TEXT_FILE)
+    display("%s: Exporting bom info to %s" % (toolname, destination),
+            options.quiet)
+    export_bom(bomfile, build_info['project_dir'])
+    unlink_if_possible(bomfile)
 
 
 def add_signing_options_to_cmd(cmd, build_info, options):
@@ -511,6 +544,127 @@ def build(project_dir, options):
         return -1
 
 
+def get_pkginfo_attribute(pkginfo_dom, attribute_name):
+    """Returns value for attribute_name from PackageInfo dom"""
+    pkgrefs = pkginfo_dom.getElementsByTagName('pkg-info')
+    if pkgrefs:
+        for ref in pkgrefs:
+            keys = ref.attributes.keys()
+            if attribute_name in keys:
+                return ref.attributes[attribute_name].value.encode('UTF-8')
+    return None
+
+
+def expand_payload(project_dir):
+    '''expand Payload if present'''
+    payload_file = os.path.join(project_dir, 'Payload')
+    payload_archive = os.path.join(project_dir, 'Payload.cpio.gz')
+    payload_dir = os.path.join(project_dir, 'payload')
+    if os.path.exists(payload_file):
+        try:
+            os.rename(payload_file, payload_archive)
+            os.mkdir(payload_dir)
+        except OSError, err:
+            raise PkgImportError(err)
+        cmd = [DITTO, '-x', payload_archive, payload_dir]
+        retcode = subprocess.call(cmd)
+        if retcode:
+            raise PkgImportError("Ditto failed to expand Payload")
+        unlink_if_possible(payload_archive)
+
+
+def convert_packageinfo(pkg_path, project_dir, options):
+    '''parse PackageInfo file and create build-info'''
+    package_info_file = os.path.join(project_dir, 'PackageInfo')
+
+    pkginfo = minidom.parse(package_info_file)
+    identifier = get_pkginfo_attribute(pkginfo, 'identifier')
+    version = get_pkginfo_attribute(pkginfo, 'version') or '1.0'
+    install_location = get_pkginfo_attribute(
+        pkginfo, 'install-location') or '/'
+    postinstall_action = get_pkginfo_attribute(
+        pkginfo, 'postinstall-action') or 'none'
+
+    build_info = {}
+    build_info['identifier'] = identifier
+    build_info['version'] = version
+    build_info['install_location'] = install_location
+    build_info['postinstall_action'] = postinstall_action
+    build_info['name'] = os.path.basename(pkg_path)
+
+    distribution_file = os.path.join(project_dir, 'Distribution')
+    build_info['distribution_style'] = os.path.exists(distribution_file)
+
+    write_build_info(build_info, project_dir, options)
+    unlink_if_possible(package_info_file)
+
+
+def handle_distribution_pkg(project_dir):
+    '''If the expanded pkg is a distribution pkg, handle this case'''
+    distribution_file = os.path.join(project_dir, 'Distribution')
+    if os.path.exists(distribution_file):
+        # we have a Distribution-style pkg here
+        # look for a _single_ *.pkg dir
+        pkgs_pattern = os.path.join(project_dir, '*.pkg')
+        pkgs = glob.glob(pkgs_pattern)
+        if len(pkgs) != 1:
+            raise PkgImportError(
+                "Distribution packages to be imported must contain exactly "
+                "one component package! Found: %s" % pkgs)
+        # move items of interest
+        pkg = pkgs[0]
+        for item in ['Bom', 'PackageInfo', 'Payload', 'Scripts']:
+            source_path = os.path.join(pkg, item)
+            if os.path.exists(source_path):
+                dest_path = os.path.join(project_dir, item)
+                try:
+                    os.rename(source_path, dest_path)
+                except OSError, err:
+                    raise PkgImportError(err)
+        try:
+            os.rmdir(pkg)
+        except OSError:
+            # we don't really care
+            pass
+
+
+def import_pkg(pkg_path, project_dir, options):
+    '''Imports an existing flat pkg into a project directory. Returns a
+    boolean to indicate success or failure.'''
+    if os.path.exists(project_dir):
+        print >> sys.stderr, (
+            "Directory %s already exists." % project_dir)
+        return False
+
+    try:
+        # expand flat pkg into project dir
+        cmd = [PKGUTIL, '--expand', pkg_path, project_dir]
+        retcode = subprocess.call(cmd)
+        if retcode:
+            raise PkgImportError("Could not expand package.")
+
+        handle_distribution_pkg(project_dir)
+
+        # export Bom.txt
+        bomfile = os.path.join(project_dir, 'Bom')
+        export_bom(bomfile, project_dir)
+        unlink_if_possible(bomfile)
+
+        # rename Scripts directory
+        uppercase_scripts_dir = os.path.join(project_dir, 'Scripts')
+        lowercase_scripts_dir = os.path.join(project_dir, 'scripts')
+        if os.path.exists(uppercase_scripts_dir):
+            os.rename(uppercase_scripts_dir, lowercase_scripts_dir)
+
+        expand_payload(project_dir)
+        convert_packageinfo(pkg_path, project_dir, options)
+
+    except(MunkiPkgError, OSError), err:
+        print >> sys.stderr, str(err)
+        return -1
+    return 0
+
+
 def valid_project_dir(project_dir):
     '''validate project dir. Returns a boolean'''
     if not os.path.exists(project_dir):
@@ -521,6 +675,7 @@ def valid_project_dir(project_dir):
         return False
     return True
 
+
 def main():
     '''Main'''
     usage = """usage: %prog [options] pkg_project_directory
@@ -529,6 +684,9 @@ def main():
     parser.add_option('--create', action='store_true',
                       help='Creates a new empty project with default settings '
                            'at given path.')
+    parser.add_option('--import', dest='import_pkg',
+                      help='Imports an existing flat package as a package '
+                      'project, creating pkg_project_directory.')
     parser.add_option('--json', action='store_true',
                       help='Create default build-info file in JSON format. '
                            'Useful only with --create option.')
@@ -558,6 +716,10 @@ def main():
 
     if options.create:
         result = create_template_project(arguments[0], options)
+        sys.exit(result)
+
+    if options.import_pkg:
+        result = import_pkg(options.import_pkg, arguments[0], options)
         sys.exit(result)
 
     # options past here require a valid project_dir

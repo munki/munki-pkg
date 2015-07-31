@@ -679,17 +679,18 @@ def valid_project_dir(project_dir):
 def main():
     '''Main'''
     usage = """usage: %prog [options] pkg_project_directory
-       Builds a package from the contents of a pkg_project_directory."""
+       A tool for building a package from the contents of a
+       pkg_project_directory."""
     parser = optparse.OptionParser(usage=usage, version=VERSION)
     parser.add_option('--create', action='store_true',
                       help='Creates a new empty project with default settings '
                            'at given path.')
-    parser.add_option('--import', dest='import_pkg',
+    parser.add_option('--import', dest='import_pkg', metavar='FLAT_PKG',
                       help='Imports an existing flat package as a package '
                       'project, creating pkg_project_directory.')
     parser.add_option('--json', action='store_true',
-                      help='Create default build-info file in JSON format. '
-                           'Useful only with --create option.')
+                      help='Create build-info file in JSON format. '
+                           'Useful only with --create and --import options.')
     parser.add_option('--export-bom-info', action='store_true',
                       help='Extracts the Bill-Of-Materials file from the '
                            'output package and exports it as Bom.txt under the '

@@ -188,7 +188,7 @@ Creates a new empty template package project. See [**Creating a new project**](#
 `--import`  
 `munkipkg --import /path/to/flat.pkg /path/to/project_dir`
 
-This option will import an existing flat package and convert it into a package project. project_dir must not exist; it will be created. build-info will be in plist format, add the --json option to output in JSON format instead. (IE: `munkipkg --json --import /path/to/flat.pkg /path/to/project_dir`)
+This option will import an existing package and convert it into a package project. project_dir must not exist; it will be created. build-info will be in plist format, add the --json option to output in JSON format instead. (IE: `munkipkg --json --import /path/to/flat.pkg /path/to/project_dir`) Not all package formats are supported.
 
 `--export-bom-info`  
 This option causes munkipkg to export bom info from the built package to a file named "Bom.txt" in the root of the package project directory. Since git does not normally track ownership, group, or mode of tracked files, and since the "ownership" option to pkgbuild can also result in different owner and group of files included in the package payload, exporting this info into a text file allows you to track this metadata in git (or other version control) as well.

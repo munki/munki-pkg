@@ -26,6 +26,7 @@ import json
 import optparse
 import os
 import plistlib
+import shutil
 import stat
 import subprocess
 import sys
@@ -76,10 +77,11 @@ def unlink_if_possible(pathname):
             "WARNING: could not remove %s: %s" % (pathname, err))
 
 
-def display(message, quiet):
+def display(message, quiet=False):
     '''Print message to stdout unless quiet is True'''
     if not quiet:
-        print message
+        toolname = os.path.basename(sys.argv[0])
+        print "%s: %s" % (toolname, message)
 
 
 def validate_build_info_keys(build_info, file_path):
@@ -129,7 +131,6 @@ def read_build_info_json(json_path):
 def make_component_property_list(build_info, options):
     """Use pkgbuild --analyze to build a component property list; then
     turn off package relocation, Return path to the resulting plist."""
-    toolname = os.path.basename(sys.argv[0])
     component_plist = os.path.join(build_info['tmpdir'], 'component.plist')
     cmd = [PKGBUILD]
     if options.quiet:
@@ -153,9 +154,8 @@ def make_component_property_list(build_info, options):
     for bundle in plist:
         if bundle.get("BundleIsRelocatable"):
             bundle["BundleIsRelocatable"] = False
-            display('%s: Turning off bundle relocation for %s'
-                    % (toolname, bundle['RootRelativeBundlePath']),
-                    options.quiet)
+            display('Turning off bundle relocation for %s'
+                    % bundle['RootRelativeBundlePath'], options.quiet)
     try:
         plistlib.writePlist(plist, component_plist)
     except BaseException, err:
@@ -165,10 +165,9 @@ def make_component_property_list(build_info, options):
 
 def make_pkginfo(build_info, options):
     '''Creates a stub PackageInfo file for use with pkgbuild'''
-    toolname = os.path.basename(sys.argv[0])
     if build_info['postinstall_action'] != 'none' and not options.quiet:
-        print ("%s: Setting postinstall-action to %s"
-               % (toolname, build_info['postinstall_action']))
+        display("Setting postinstall-action to %s"
+                % build_info['postinstall_action'], options.quiet)
     pkginfo_path = os.path.join(build_info['tmpdir'], 'PackageInfo')
     pkginfo_text = ('<?xml version="1.0" encoding="utf-8" standalone="no"?>'
                     '<pkg-info postinstall-action="%s"/>'
@@ -346,7 +345,6 @@ def write_build_info(build_info, project_dir, options):
 
 def create_template_project(project_dir, options):
     '''Create an empty pkg project directory with default settings'''
-    toolname = os.path.basename(sys.argv[0])
     if os.path.exists(project_dir):
         print >> sys.stderr, "%s already exists!" % project_dir
         return -1
@@ -364,7 +362,8 @@ def create_template_project(project_dir, options):
         fileobj = open(gitignore_file, "w")
         fileobj.write(GITIGNORE_DEFAULT)
         fileobj.close()
-        print "%s: Created new package project at %s" % (toolname, project_dir)
+        display(
+            "Created new package project at %s" % project_dir, options.quiet)
     except (OSError, MunkiPkgError), err:
         print >> sys.stderr, str(err)
         return -1
@@ -388,10 +387,8 @@ def export_bom_info(build_info, options):
     '''Extract the bom file from the built package and export its info to the
     project directory'''
     pkg_path = os.path.join(build_info['build_dir'], build_info['name'])
-    toolname = os.path.basename(sys.argv[0])
     cmd = [PKGUTIL, '--bom', pkg_path]
-    display("%s: Extracting bom file from %s" % (toolname, pkg_path),
-            options.quiet)
+    display("Extracting bom file from %s" % pkg_path, options.quiet)
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     (stdout, stderr) = proc.communicate()
     if proc.returncode:
@@ -399,18 +396,15 @@ def export_bom_info(build_info, options):
 
     bomfile = stdout.strip()
     destination = os.path.join(build_info['project_dir'], BOM_TEXT_FILE)
-    display("%s: Exporting bom info to %s" % (toolname, destination),
-            options.quiet)
+    display("Exporting bom info to %s" % destination, options.quiet)
     export_bom(bomfile, build_info['project_dir'])
     unlink_if_possible(bomfile)
 
 
 def add_signing_options_to_cmd(cmd, build_info, options):
     '''If build_info contains signing options, add them to the cmd'''
-    toolname = os.path.basename(sys.argv[0])
     if 'signing_info' in build_info:
-        display("%s: Adding package signing info to command" % toolname,
-                options.quiet)
+        display("Adding package signing info to command", options.quiet)
         signing_info = build_info['signing_info']
         if 'identity' in signing_info:
             cmd.extend(['--sign', signing_info['identity']])
@@ -486,12 +480,10 @@ def build_distribution_pkg(build_info, options):
     if retcode:
         raise BuildError("Distribution package creation failed.")
     try:
-        toolname = os.path.basename(sys.argv[0])
-        display("%s: Removing component package %s" % (toolname, pkginputname),
-                options.quiet)
+        display("Removing component package %s" % pkginputname, options.quiet)
         os.unlink(pkginputname)
-        display("%s: Renaming distribution package %s to %s"
-                % (toolname, distoutputname, pkginputname), options.quiet)
+        display("Renaming distribution package %s to %s"
+                % (distoutputname, pkginputname), options.quiet)
         os.rename(distoutputname, pkginputname)
     except OSError, err:
         raise BuildError(err)
@@ -544,7 +536,7 @@ def build(project_dir, options):
         return -1
 
 
-def get_pkginfo_attribute(pkginfo_dom, attribute_name):
+def get_pkginfo_attr(pkginfo_dom, attribute_name):
     """Returns value for attribute_name from PackageInfo dom"""
     pkgrefs = pkginfo_dom.getElementsByTagName('pkg-info')
     if pkgrefs:
@@ -574,22 +566,18 @@ def expand_payload(project_dir):
 
 
 def convert_packageinfo(pkg_path, project_dir, options):
-    '''parse PackageInfo file and create build-info'''
+    '''parse PackageInfo file and create build-info file'''
     package_info_file = os.path.join(project_dir, 'PackageInfo')
 
     pkginfo = minidom.parse(package_info_file)
-    identifier = get_pkginfo_attribute(pkginfo, 'identifier')
-    version = get_pkginfo_attribute(pkginfo, 'version') or '1.0'
-    install_location = get_pkginfo_attribute(
-        pkginfo, 'install-location') or '/'
-    postinstall_action = get_pkginfo_attribute(
-        pkginfo, 'postinstall-action') or 'none'
-
     build_info = {}
-    build_info['identifier'] = identifier
-    build_info['version'] = version
-    build_info['install_location'] = install_location
-    build_info['postinstall_action'] = postinstall_action
+
+    build_info['identifier'] = get_pkginfo_attr(pkginfo, 'identifier') or ''
+    build_info['version'] = get_pkginfo_attr(pkginfo, 'version') or '1.0'
+    build_info['install_location'] = get_pkginfo_attr(
+        pkginfo, 'install-location') or '/'
+    build_info['postinstall_action'] = get_pkginfo_attr(
+        pkginfo, 'postinstall-action') or 'none'
     build_info['name'] = os.path.basename(pkg_path)
 
     distribution_file = os.path.join(project_dir, 'Distribution')
@@ -597,6 +585,27 @@ def convert_packageinfo(pkg_path, project_dir, options):
 
     write_build_info(build_info, project_dir, options)
     unlink_if_possible(package_info_file)
+
+
+def convert_info_plist(pkg_path, project_dir, options):
+    '''Read bundle pkg Info.plist and create build-info file'''
+    info_plist = os.path.join(pkg_path, 'Contents/Info.plist')
+    info = plistlib.readPlist(info_plist)
+    build_info = {}
+
+    build_info['identifier'] = info.get('CFBundleIdentifier', '')
+    build_info['version'] = (info.get('CFBundleShortVersionString') or
+                             info.get('CFBundleVersion') or '1.0')
+    build_info['install_location'] = info.get('IFPkgFlagDefaultLocation') or '/'
+    build_info['postinstall_action'] = 'none'
+    if (info.get('IFPkgFlagRestartAction') in
+            ['RequireRestart', 'RecommendRestart']):
+        build_info['postinstall_action'] = 'restart'
+    if (info.get('IFPkgFlagRestartAction') in
+            ['RequireLogout', 'RecommendLogout']):
+        build_info['postinstall_action'] = 'logout'
+    build_info['name'] = os.path.basename(pkg_path)
+    write_build_info(build_info, project_dir, options)
 
 
 def handle_distribution_pkg(project_dir):
@@ -628,14 +637,100 @@ def handle_distribution_pkg(project_dir):
             pass
 
 
-def import_pkg(pkg_path, project_dir, options):
-    '''Imports an existing flat pkg into a project directory. Returns a
-    boolean to indicate success or failure.'''
-    if os.path.exists(project_dir):
-        print >> sys.stderr, (
-            "Directory %s already exists." % project_dir)
-        return False
+def copy_bundle_pkg_scripts(pkg_path, project_dir):
+    '''Copies scripts and other items to project scripts directory'''
+    # if any of the known script names are in the Resources folder,
+    # copy things that aren't *.lproj and package_version from
+    # Resources to project_dir/scripts
 
+    pre_script_names = ['preflight', 'preinstall', 'preupgrade']
+    post_script_names = ['postflight', 'postinstall', 'postupgrade']
+    script_names = pre_script_names + post_script_names
+    resources_dir = os.path.join(pkg_path, 'Contents/Resources')
+    resources_items = os.listdir(resources_dir)
+
+    # does resources_dir contain any of the known script_names?
+    if set(resources_items).intersection(set(script_names)):
+        scripts_dir = os.path.join(project_dir, 'scripts')
+        os.mkdir(scripts_dir)
+        for item in resources_items:
+            if item.endswith('.lproj'):
+                # localization files
+                continue
+            if item == "package_version":
+                # we don't need this either
+                continue
+            source_item = os.path.join(resources_dir, item)
+            dest_item = os.path.join(scripts_dir, item)
+            if os.path.isdir(source_item):
+                shutil.copytree(source_item, dest_item)
+            else:
+                shutil.copy2(source_item, dest_item)
+
+    # either fix up the script names or print a warning
+    pre_scripts = [item for item in os.listdir(scripts_dir)
+                   if item in pre_script_names]
+    if len(pre_scripts) == 1 and pre_scripts[0] != 'preinstall':
+        # rename it
+        current_script_path = os.path.join(scripts_dir, pre_scripts[0])
+        new_script_path = os.path.join(scripts_dir, 'preinstall')
+        os.rename(current_script_path, new_script_path)
+    elif len(pre_scripts) > 1:
+        print >> sys.stderr, ("WARNING: Multiple pre-scripts found. "
+                              "Flat packages support only 'preinstall'.")
+
+    post_scripts = [item for item in os.listdir(scripts_dir)
+                    if item in post_script_names]
+    if len(post_scripts) == 1 and post_scripts[0] != 'postinstall':
+        # rename it
+        current_script_path = os.path.join(scripts_dir, post_scripts[0])
+        new_script_path = os.path.join(scripts_dir, 'postinstall')
+        os.rename(current_script_path, new_script_path)
+    elif len(post_scripts) > 1:
+        print >> sys.stderr, ("WARNING: Multiple post-scripts found. "
+                              "Flat packages support only 'postinstall'.")
+
+
+def import_bundle_pkg(pkg_path, project_dir, options):
+    '''Imports a bundle-style package'''
+    try:
+        dist_files = glob.glob(os.path.join(pkg_path, 'Contents/*.dist'))
+        if dist_files:
+            raise PkgImportError(
+                "Bundle-style distribution packages are not supported for "
+                'import. Consider importing the included sub-package(s).')
+
+        # create the project dir
+        os.mkdir(project_dir)
+
+        # export Bom.txt
+        bomfile = os.path.join(pkg_path, 'Contents/Archive.bom')
+        export_bom(bomfile, project_dir)
+
+        # export Archive as payload
+        archive = os.path.join(pkg_path, 'Contents/Archive.pax.gz')
+        payload_dir = os.path.join(project_dir, 'payload')
+        try:
+            os.mkdir(payload_dir)
+        except OSError, err:
+            raise PkgImportError(err)
+        cmd = [DITTO, '-x', archive, payload_dir]
+        retcode = subprocess.call(cmd)
+        if retcode:
+            raise PkgImportError("Ditto failed to expand Payload")
+
+        copy_bundle_pkg_scripts(pkg_path, project_dir)
+        convert_info_plist(pkg_path, project_dir, options)
+        display("Created new package project at %s"
+                % project_dir, options.quiet)
+        return 0
+    except(MunkiPkgError, OSError), err:
+        print >> sys.stderr, str(err)
+        return -1
+
+
+def import_flat_pkg(pkg_path, project_dir, options):
+    '''Imports a flat package'''
     try:
         # expand flat pkg into project dir
         cmd = [PKGUTIL, '--expand', pkg_path, project_dir]
@@ -658,11 +753,26 @@ def import_pkg(pkg_path, project_dir, options):
 
         expand_payload(project_dir)
         convert_packageinfo(pkg_path, project_dir, options)
-
+        display("Created new package project at %s"
+                % project_dir, options.quiet)
+        return 0
     except(MunkiPkgError, OSError), err:
         print >> sys.stderr, str(err)
         return -1
-    return 0
+
+
+def import_pkg(pkg_path, project_dir, options):
+    '''Imports an existing pkg into a project directory. Returns a
+    boolean to indicate success or failure.'''
+    if os.path.exists(project_dir):
+        print >> sys.stderr, (
+            "Directory %s already exists." % project_dir)
+        return False
+
+    if os.path.isdir(pkg_path):
+        return import_bundle_pkg(pkg_path, project_dir, options)
+    else:
+        return import_flat_pkg(pkg_path, project_dir, options)
 
 
 def valid_project_dir(project_dir):
@@ -686,7 +796,7 @@ def main():
                       help='Creates a new empty project with default settings '
                            'at given path.')
     parser.add_option('--import', dest='import_pkg', metavar='FLAT_PKG',
-                      help='Imports an existing flat package as a package '
+                      help='Imports an existing package as a package '
                       'project, creating pkg_project_directory.')
     parser.add_option('--json', action='store_true',
                       help='Create build-info file in JSON format. '

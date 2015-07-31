@@ -34,7 +34,7 @@ import tempfile
 from xml.dom import minidom
 from xml.parsers.expat import ExpatError
 
-VERSION = "0.4"
+VERSION = "0.5"
 DITTO = "/usr/bin/ditto"
 LSBOM = "/usr/bin/lsbom"
 PKGBUILD = "/usr/bin/pkgbuild"

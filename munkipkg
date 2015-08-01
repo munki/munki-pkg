@@ -794,7 +794,7 @@ def main():
     parser.add_option('--create', action='store_true',
                       help='Creates a new empty project with default settings '
                            'at given path.')
-    parser.add_option('--import', dest='import_pkg', metavar='FLAT_PKG',
+    parser.add_option('--import', dest='import_pkg', metavar='PKG',
                       help='Imports an existing package as a package '
                       'project, creating pkg_project_directory.')
     parser.add_option('--json', action='store_true',

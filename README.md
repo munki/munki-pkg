@@ -10,7 +10,7 @@ Another tool that solves a similar problem is Joe Block's **The Luggage** (https
 
 **autopkg** (https://github.com/autopkg/autopkg) is another tool that has some overlap here. It's definitely possible to use autopkg to build packages from files and scripts on your local disk. See https://managingosx.wordpress.com/2015/07/30/using-autopkg-for-general-purpose-packaging/ and https://github.com/gregneagle/autopkg-packaging-demo for examples on how to do this.
 
-So why consider using munkipkg? It's simple and self-contained, with no external dependencies. It can use JSON for its build settings file/data, instead of Makefile systax or XML plists. It does not install a root-level system daemon as does autopkg. It can easily build distribution-style packages and can sign them. 
+So why consider using munkipkg? It's simple and self-contained, with no external dependencies. It can use JSON for its build settings file/data, instead of Makefile systax or XML plists. It does not install a root-level system daemon as does autopkg. It can easily build distribution-style packages and can sign them. Finally, munkipkg can import existing packages.
 
 ##Basic operation
 
@@ -35,12 +35,23 @@ munkipkg can create an empty package project directory for you:
 
 `munkipkg --create Foo`
 
-...will create a package project directory named "Foo" in the current working directory, complete with a starter build-info.plist, empty payload and scripts directories, and a .gitignore file to cause git to ignore the build/ directory that is created when a project is built.
+...will create a new package project directory named "Foo" in the current working directory, complete with a starter build-info.plist, empty payload and scripts directories, and a .gitignore file to cause git to ignore the build/ directory that is created when a project is built.
 
 Once you have a project directory, you simply copy the files you wish to package into the payload directory, and add a preinstall and/or postinstall script to the scripts directory. You may also wish to edit the build-info.plist.
 
+###Importing an existing package
+
+Another way to create a package project is to import an existing package:
+
+`munkipkg --import /path/to/foo.pkg Foo`
+
+...will create a new package project directory named "Foo" in the current working directory, with payload, scripts and build-info extracted from foo.pkg.
+Complex or non-standard packages may not be extracted with 100% fidelity, and not all package formats are supported. Specifically, metapackages are not supported, and distribution packages containing multiple sub-packages are not supported. In these cases, consider importing the individual sub-packages.
+
 
 ###Building a package
+
+This is the central task of munkipkg.
 
 `munkipkg path/to/package_project_directory`
 
@@ -98,7 +109,7 @@ Alternately, you may specify build-info in JSON format. A new project created wi
 If both build-info.plist and build-info.json are present, the plist file will be used; the json file will be ignored.
 
 
-###build-info keys
+####build-info keys
 
 **distribution_style**  
 Boolean: true or false. Defaults to false. If present and true, package built will be a "distribution-style" package.

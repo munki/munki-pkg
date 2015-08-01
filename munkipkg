@@ -96,10 +96,10 @@ def validate_build_info_keys(build_info, file_path):
         if key in build_info:
             if build_info[key] not in valid_values[key]:
                 print >> sys.stderr, (
-                    "%s key '%s' has illegal value: %s"
+                    "ERROR: %s key '%s' has illegal value: %s"
                     % (file_path, key, repr(build_info[key])))
                 print >> sys.stderr, (
-                    'Legal values are: %s' % valid_values[key])
+                    'ERROR: Legal values are: %s' % valid_values[key])
                 return None
 
 
@@ -237,7 +237,7 @@ def sync_from_bom_info(project_dir, options):
 
     if not os.path.exists(bom_list_file):
         print >> sys.stderr, (
-            "Can't sync with bom info: no %s found in project directory."
+            "ERROR: Can't sync with bom info: no %s found in project directory."
             % BOM_TEXT_FILE)
         return -1
 
@@ -278,19 +278,19 @@ def sync_from_bom_info(project_dir, options):
                 else:
                     # missing file. This is a problem.
                     print >> sys.stderr, (
-                        "File %s is missing in payload" % payload_path)
+                        "ERROR: File %s is missing in payload" % payload_path)
                     returncode = -1
                     break
 
     except (OSError, ValueError), err:
-        print >> sys.stderr, str(err)
+        print >> sys.stderr, 'ERROR: %s' % err
         return -1
 
     if returncode == 0 and not options.quiet:
         if changes_made:
-            print "Sync successful."
+            display("Sync successful.")
         else:
-            print "Sync successful: no changes needed."
+            display("Sync successful: no changes needed.")
     return returncode
 
 
@@ -346,7 +346,7 @@ def write_build_info(build_info, project_dir, options):
 def create_template_project(project_dir, options):
     '''Create an empty pkg project directory with default settings'''
     if os.path.exists(project_dir):
-        print >> sys.stderr, "%s already exists!" % project_dir
+        print >> sys.stderr, "ERROR: %s already exists!" % project_dir
         return -1
     payload_dir = os.path.join(project_dir, 'payload')
     scripts_dir = os.path.join(project_dir, 'scripts')
@@ -365,7 +365,7 @@ def create_template_project(project_dir, options):
         display(
             "Created new package project at %s" % project_dir, options.quiet)
     except (OSError, MunkiPkgError), err:
-        print >> sys.stderr, str(err)
+        print >> sys.stderr, 'ERROR: %s' % err
         return -1
 
 
@@ -528,7 +528,7 @@ def build(project_dir, options):
         return 0
 
     except BuildError, err:
-        print >> sys.stderr, str(err)
+        print >> sys.stderr, 'ERROR: %s' % err
         if build_info.get('tmpdir'):
             # cleanup temp dir
             _ = subprocess.call(["/bin/rm", "-rf", build_info['tmpdir']])
@@ -636,28 +636,34 @@ def handle_distribution_pkg(project_dir):
             pass
 
 
-def copy_bundle_pkg_scripts(pkg_path, project_dir):
+def script_names(kind='all'):
+    '''Return a list of known script names for bundle-style packages.
+    If kind is 'pre' or 'post', return just the pre or post names'''
+    pre_script_names = ['preflight', 'preinstall', 'preupgrade']
+    post_script_names = ['postflight', 'postinstall', 'postupgrade']
+    if kind == 'pre':
+        return pre_script_names
+    if kind == 'post':
+        return post_script_names
+    return pre_script_names + post_script_names
+
+
+def copy_bundle_pkg_scripts(pkg_path, project_dir, options):
     '''Copies scripts and other items to project scripts directory'''
     # if any of the known script names are in the Resources folder,
     # copy things that aren't *.lproj and package_version from
     # Resources to project_dir/scripts
 
-    pre_script_names = ['preflight', 'preinstall', 'preupgrade']
-    post_script_names = ['postflight', 'postinstall', 'postupgrade']
-    script_names = pre_script_names + post_script_names
     resources_dir = os.path.join(pkg_path, 'Contents/Resources')
     resources_items = os.listdir(resources_dir)
 
     # does resources_dir contain any of the known script_names?
-    if set(resources_items).intersection(set(script_names)):
+    if set(resources_items).intersection(set(script_names())):
         scripts_dir = os.path.join(project_dir, 'scripts')
         os.mkdir(scripts_dir)
         for item in resources_items:
-            if item.endswith('.lproj'):
-                # localization files
-                continue
-            if item == "package_version":
-                # we don't need this either
+            if item.endswith('.lproj') or item == "package_version":
+                # we don't need to copy these to scripts dir
                 continue
             source_item = os.path.join(resources_dir, item)
             dest_item = os.path.join(scripts_dir, item)
@@ -666,28 +672,22 @@ def copy_bundle_pkg_scripts(pkg_path, project_dir):
             else:
                 shutil.copy2(source_item, dest_item)
 
-    # either fix up the script names or print a warning
-    pre_scripts = [item for item in os.listdir(scripts_dir)
-                   if item in pre_script_names]
-    if len(pre_scripts) == 1 and pre_scripts[0] != 'preinstall':
-        # rename it
-        current_script_path = os.path.join(scripts_dir, pre_scripts[0])
-        new_script_path = os.path.join(scripts_dir, 'preinstall')
-        os.rename(current_script_path, new_script_path)
-    elif len(pre_scripts) > 1:
-        print >> sys.stderr, ("WARNING: Multiple pre-scripts found. "
-                              "Flat packages support only 'preinstall'.")
-
-    post_scripts = [item for item in os.listdir(scripts_dir)
-                    if item in post_script_names]
-    if len(post_scripts) == 1 and post_scripts[0] != 'postinstall':
-        # rename it
-        current_script_path = os.path.join(scripts_dir, post_scripts[0])
-        new_script_path = os.path.join(scripts_dir, 'postinstall')
-        os.rename(current_script_path, new_script_path)
-    elif len(post_scripts) > 1:
-        print >> sys.stderr, ("WARNING: Multiple post-scripts found. "
-                              "Flat packages support only 'postinstall'.")
+    # rename pre- and post- scripts or print a warning
+    for kind in ['pre', 'post']:
+        found_scripts = [item for item in os.listdir(scripts_dir)
+                         if item in script_names(kind)]
+        supported_name = kind + 'install'
+        if len(found_scripts) == 1 and found_scripts[0] != supported_name:
+            # rename it
+            current_script_path = os.path.join(scripts_dir, found_scripts[0])
+            new_script_path = os.path.join(scripts_dir, supported_name)
+            display('Renaming %s script to %s'
+                    % (found_scripts[0], supported_name), options.quiet)
+            os.rename(current_script_path, new_script_path)
+        elif len(found_scripts) > 1:
+            print >> sys.stderr, ("WARNING: Multiple %sXXXXXX scripts found. "
+                                  "Flat packages support only '%sinstall'."
+                                  % (kind, kind))
 
 
 def import_bundle_pkg(pkg_path, project_dir, options):
@@ -718,13 +718,14 @@ def import_bundle_pkg(pkg_path, project_dir, options):
         if retcode:
             raise PkgImportError("Ditto failed to expand Payload")
 
-        copy_bundle_pkg_scripts(pkg_path, project_dir)
+        copy_bundle_pkg_scripts(pkg_path, project_dir, options)
         convert_info_plist(pkg_path, project_dir, options)
+        sync_from_bom_info(project_dir, options)
         display("Created new package project at %s"
                 % project_dir, options.quiet)
         return 0
     except(MunkiPkgError, OSError), err:
-        print >> sys.stderr, str(err)
+        print >> sys.stderr, 'ERROR: %s' % err
         return -1
 
 
@@ -752,11 +753,12 @@ def import_flat_pkg(pkg_path, project_dir, options):
 
         expand_payload(project_dir)
         convert_packageinfo(pkg_path, project_dir, options)
+        sync_from_bom_info(project_dir, options)
         display("Created new package project at %s"
                 % project_dir, options.quiet)
         return 0
     except(MunkiPkgError, OSError), err:
-        print >> sys.stderr, str(err)
+        print >> sys.stderr, 'ERROR: %s' % err
         return -1
 
 
@@ -765,7 +767,7 @@ def import_pkg(pkg_path, project_dir, options):
     boolean to indicate success or failure.'''
     if os.path.exists(project_dir):
         print >> sys.stderr, (
-            "Directory %s already exists." % project_dir)
+            "ERROR: Directory %s already exists." % project_dir)
         return False
 
     if os.path.isdir(pkg_path):
@@ -777,10 +779,10 @@ def import_pkg(pkg_path, project_dir, options):
 def valid_project_dir(project_dir):
     '''validate project dir. Returns a boolean'''
     if not os.path.exists(project_dir):
-        print >> sys.stderr, ("%s: Project not found." % project_dir)
+        print >> sys.stderr, ("ERROR: %s: Project not found." % project_dir)
         return False
     elif not os.path.isdir(project_dir):
-        print >> sys.stderr, ("%s is not a directory." % project_dir)
+        print >> sys.stderr, ("ERROR: %s is not a directory." % project_dir)
         return False
     return True
 
@@ -821,7 +823,7 @@ def main():
 
     if len(arguments) > 1:
         print >> sys.stderr, (
-            "Only a single package project can be built at a time!")
+            "ERROR: Only a single package project can be built at a time!")
         sys.exit(-1)
 
     if options.create:

@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset='utf-8'>
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <link href='https://fonts.googleapis.com/css?family=Chivo:900' rel='stylesheet' type='text/css'>
+    <link rel="stylesheet" type="text/css" href="stylesheets/stylesheet.css" media="screen">
+    <link rel="stylesheet" type="text/css" href="stylesheets/github-dark.css" media="screen">
+    <link rel="stylesheet" type="text/css" href="stylesheets/print.css" media="print">
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <title>Munki-pkg by munki</title>
+  </head>
+
+  <body>
+    <div id="container">
+      <div class="inner">
+
+        <header>
+          <h1>Munki-pkg</h1>
+          <h2>Repo for the munkipkg tool and example projects</h2>
+        </header>
+
+        <section id="downloads" class="clearfix">
+          <a href="https://github.com/munki/munki-pkg/zipball/master" id="download-zip" class="button"><span>Download .zip</span></a>
+          <a href="https://github.com/munki/munki-pkg/tarball/master" id="download-tar-gz" class="button"><span>Download .tar.gz</span></a>
+          <a href="https://github.com/munki/munki-pkg" id="view-on-github" class="button"><span>View on GitHub</span></a>
+        </section>
+
+        <hr>
+
+        <section id="main_content">
+          <h1>
+<a id="munkipkg" class="anchor" href="#munkipkg" aria-hidden="true"><span class="octicon octicon-link"></span></a>munkipkg</h1>
+
+<h2>
+<a id="introduction" class="anchor" href="#introduction" aria-hidden="true"><span class="octicon octicon-link"></span></a>Introduction</h2>
+
+<p>munkipkg is a simple tool for building packages in a consistent, repeatable manner from source files and scripts in a project directory.</p>
+
+<p>While you can use munkipkg to generate packages for use with Munki (<a href="https://www.munki.org/munki/">https://www.munki.org/munki/</a>), the packages munkipkg builds are just normal Apple installer packages usable anywhere you can use Apple installer packages.</p>
+
+<p>Files, scripts, and metadata are stored in a way that is easy to track and manage using a version control system like git.</p>
+
+<p>Another tool that solves a similar problem is Joe Block's <strong>The Luggage</strong> (<a href="https://github.com/unixorn/luggage">https://github.com/unixorn/luggage</a>). If you are happily using The Luggage, you can probably safely ignore this tool.</p>
+
+<p><strong>autopkg</strong> (<a href="https://github.com/autopkg/autopkg">https://github.com/autopkg/autopkg</a>) is another tool that has some overlap here. It's definitely possible to use autopkg to build packages from files and scripts on your local disk. See <a href="https://managingosx.wordpress.com/2015/07/30/using-autopkg-for-general-purpose-packaging/">https://managingosx.wordpress.com/2015/07/30/using-autopkg-for-general-purpose-packaging/</a> and <a href="https://github.com/gregneagle/autopkg-packaging-demo">https://github.com/gregneagle/autopkg-packaging-demo</a> for examples on how to do this.</p>
+
+<p>So why consider using munkipkg? It's simple and self-contained, with no external dependencies. It can use JSON for its build settings file/data, instead of Makefile systax or XML plists. It does not install a root-level system daemon as does autopkg. It can easily build distribution-style packages and can sign them. Finally, munkipkg can import existing packages.</p>
+
+<h2>
+<a id="basic-operation" class="anchor" href="#basic-operation" aria-hidden="true"><span class="octicon octicon-link"></span></a>Basic operation</h2>
+
+<p>munkipkg builds flat packages using Apple's pkgbuild and productbuild tools.</p>
+
+<h3>
+<a id="package-project-directories" class="anchor" href="#package-project-directories" aria-hidden="true"><span class="octicon octicon-link"></span></a>Package project directories</h3>
+
+<p>munkipkg builds packages from a "package project directory". At its simplest, a package project directory is a directory containing a "payload" directory, which itself contains the files to be packaged. More typically, the directory also contains a "build-info.plist" file containing specific settings for the build. The package project directory may also contain a "scripts" directory containing any scripts (and, optionally, additional files used by the scripts) to be included in the package.</p>
+
+<h3>
+<a id="package-project-directory-layout" class="anchor" href="#package-project-directory-layout" aria-hidden="true"><span class="octicon octicon-link"></span></a>Package project directory layout</h3>
+
+<pre><code>project_dir/
+    build-info.plist
+    payload/
+    scripts/
+</code></pre>
+
+<h3>
+<a id="creating-a-new-project" class="anchor" href="#creating-a-new-project" aria-hidden="true"><span class="octicon octicon-link"></span></a>Creating a new project</h3>
+
+<p>munkipkg can create an empty package project directory for you:</p>
+
+<p><code>munkipkg --create Foo</code></p>
+
+<p>...will create a new package project directory named "Foo" in the current working directory, complete with a starter build-info.plist, empty payload and scripts directories, and a .gitignore file to cause git to ignore the build/ directory that is created when a project is built.</p>
+
+<p>Once you have a project directory, you simply copy the files you wish to package into the payload directory, and add a preinstall and/or postinstall script to the scripts directory. You may also wish to edit the build-info.plist.</p>
+
+<h3>
+<a id="importing-an-existing-package" class="anchor" href="#importing-an-existing-package" aria-hidden="true"><span class="octicon octicon-link"></span></a>Importing an existing package</h3>
+
+<p>Another way to create a package project is to import an existing package:</p>
+
+<p><code>munkipkg --import /path/to/foo.pkg Foo</code></p>
+
+<p>...will create a new package project directory named "Foo" in the current working directory, with payload, scripts and build-info extracted from foo.pkg.
+Complex or non-standard packages may not be extracted with 100% fidelity, and not all package formats are supported. Specifically, metapackages are not supported, and distribution packages containing multiple sub-packages are not supported. In these cases, consider importing the individual sub-packages.</p>
+
+<h3>
+<a id="building-a-package" class="anchor" href="#building-a-package" aria-hidden="true"><span class="octicon octicon-link"></span></a>Building a package</h3>
+
+<p>This is the central task of munkipkg.</p>
+
+<p><code>munkipkg path/to/package_project_directory</code></p>
+
+<p>Causes munkipkg to build the package defined in package_project_directory. The built package is created in a build/ directory inside the project directory.</p>
+
+<h3>
+<a id="build-info" class="anchor" href="#build-info" aria-hidden="true"><span class="octicon octicon-link"></span></a>build-info</h3>
+
+<p>Build options are stored in a file at the root of the package project. XML plist and JSON formats are supported. A build-info file is not strictly required, and a build will use default values if this file is missing.</p>
+
+<h4>
+<a id="build-infoplist" class="anchor" href="#build-infoplist" aria-hidden="true"><span class="octicon octicon-link"></span></a>build-info.plist</h4>
+
+<p>This must be in XML (text) format. Binary plists are not supported. For a new project created with <code>munkipkg --create Foo</code>, the build-info.plist looks like this:</p>
+
+<pre><code>&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"&gt;
+&lt;plist version="1.0"&gt;
+&lt;dict&gt;
+    &lt;key&gt;distribution_style&lt;/key&gt;
+    &lt;false/&gt;
+    &lt;key&gt;identifier&lt;/key&gt;
+    &lt;string&gt;com.github.munki.pkg.Foo&lt;/string&gt;
+    &lt;key&gt;install_location&lt;/key&gt;
+    &lt;string&gt;/&lt;/string&gt;
+    &lt;key&gt;name&lt;/key&gt;
+    &lt;string&gt;Foo.pkg&lt;/string&gt;
+    &lt;key&gt;ownership&lt;/key&gt;
+    &lt;string&gt;recommended&lt;/string&gt;
+    &lt;key&gt;postinstall_action&lt;/key&gt;
+    &lt;string&gt;none&lt;/string&gt;
+    &lt;key&gt;suppress_bundle_relocation&lt;/key&gt;
+    &lt;true/&gt;
+    &lt;key&gt;version&lt;/key&gt;
+    &lt;string&gt;1.0&lt;/string&gt;
+&lt;/dict&gt;
+&lt;/plist&gt;
+</code></pre>
+
+<h4>
+<a id="build-infojson" class="anchor" href="#build-infojson" aria-hidden="true"><span class="octicon octicon-link"></span></a>build-info.json</h4>
+
+<p>Alternately, you may specify build-info in JSON format. A new project created with <code>munkipkg --create --json Foo</code> would have this build-info.json file:</p>
+
+<pre><code>{
+    "ownership": "recommended",
+    "suppress_bundle_relocation": true,
+    "identifier": "com.github.munki.pkg.Foo",
+    "postinstall_action": "none",
+    "distribution_style": false,
+    "version": "1.0",
+    "name": "Foo.pkg",
+    "install_location": "/"
+}
+</code></pre>
+
+<p>If both build-info.plist and build-info.json are present, the plist file will be used; the json file will be ignored.</p>
+
+<h4>
+<a id="build-info-keys" class="anchor" href="#build-info-keys" aria-hidden="true"><span class="octicon octicon-link"></span></a>build-info keys</h4>
+
+<p><strong>distribution_style</strong><br>
+Boolean: true or false. Defaults to false. If present and true, package built will be a "distribution-style" package.</p>
+
+<p><strong>identifier</strong><br>
+String containing the package identifier. If this is missing, one is constructed using the name of the package project directory.</p>
+
+<p><strong>install_location</strong><br>
+String. Path to the intended install location of the payload on the target disk. Defaults to "/".</p>
+
+<p><strong>name</strong><br>
+String containing the package name. If this is missing, one is constructed using the name of the package project directory.</p>
+
+<p><strong>ownership</strong><br>
+String. One of "recommended", "preserve", or "preserve-other". Defaults to "recommended". See the man page for pkgbuild for a description of the ownership options.</p>
+
+<p><strong>postinstall_action</strong><br>
+String. One of "none", "logout", or "restart". Defaults to "none".</p>
+
+<p><strong>suppress_bundle_relocation</strong><br>
+Boolean: true or false. Defaults to true. If present and false, bundle relocation will be allowed, which causes the Installer to update bundles found in locations other than their default location. For deploying software in a managed environment, this is rarely what you want.</p>
+
+<p><strong>version</strong><br>
+A string representation of the version number. Defaults to "1.0".</p>
+
+<p><strong>signing_info</strong><br>
+Dictionary of signing options. See below.</p>
+
+<h3>
+<a id="payload-free-packages" class="anchor" href="#payload-free-packages" aria-hidden="true"><span class="octicon octicon-link"></span></a>Payload-free packages</h3>
+
+<p>You can use this tool to build payload-free packages in two variants.</p>
+
+<p>If there is no payload folder at all, <code>pkgbuild</code> is called with the <code>--nopayload</code> option. The resulting package will not leave a receipt when installed.</p>
+
+<p>If the payload folder exists, but is empty, you'll get a "pseudo-payload-free" package. No files will be installed, but a receipt will be left. This is often the more useful option if you need to track if the package has been installed on machines you manage.</p>
+
+<h3>
+<a id="package-signing" class="anchor" href="#package-signing" aria-hidden="true"><span class="octicon octicon-link"></span></a>Package signing</h3>
+
+<p>You may sign packages as part of the build process by adding a signing_info dictionary to the build_info.plist:</p>
+
+<pre><code>    &lt;key&gt;signing_info&lt;/key&gt;
+    &lt;dict&gt;
+        &lt;key&gt;identity&lt;/key&gt;
+        &lt;string&gt;Signing Identity Common Name&lt;/string&gt;
+        &lt;key&gt;keychain&lt;/key&gt;
+        &lt;string&gt;/path/to/SpecialKeychain&lt;/string&gt;
+        &lt;key&gt;additional_cert_names&lt;/key&gt;
+        &lt;array&gt;
+            &lt;string&gt;Intermediate CA Common Name 1&lt;/string&gt;
+            &lt;string&gt;Intermediate CA Common Name 2&lt;/string&gt;
+        &lt;/array&gt;
+        &lt;key&gt;timestamp&lt;/key&gt;
+        &lt;true/&gt;
+    &lt;/dict&gt;
+</code></pre>
+
+<p>or, in JSON format in a build-info.json file:</p>
+
+<pre><code>    "signing_info": {
+        "identity": "Signing Identity Common Name",
+        "keychain": "/path/to/SpecialKeychain"
+        "additional_cert_names": ["Intermediate CA Common Name 1",
+                                  "Intermediate CA Common Name 2"],
+        "timestamp": true,
+    }
+</code></pre>
+
+<p>The only required key/value in the signing_info dictionary is 'identity'.</p>
+
+<p>See the <strong>SIGNED PACKAGES</strong> section of the man page for <code>pkgbuild</code> or the <strong>SIGNED PRODUCT ARCHIVES</strong> section of the man page for <code>productbuild</code> for more information on the signing options.</p>
+
+<h3>
+<a id="scripts" class="anchor" href="#scripts" aria-hidden="true"><span class="octicon octicon-link"></span></a>Scripts</h3>
+
+<p>munkipkg makes use of pkgbuild. Therefore the "main" scripts must be named either "preinstall" or "postinstall" (with no extensions) and must have their execute bit set. Other scripts can be called by the preinstall or postinstall scripts, but only those two scripts will be automatically called during package installation.</p>
+
+<h3>
+<a id="additional-options" class="anchor" href="#additional-options" aria-hidden="true"><span class="octicon octicon-link"></span></a>Additional options</h3>
+
+<p><code>--create</code><br>
+Creates a new empty template package project. See <a href="#creating-a-new-project"><strong>Creating a new project</strong></a>.</p>
+
+<p><code>--import</code><br>
+<code>munkipkg --import /path/to/flat.pkg /path/to/project_dir</code></p>
+
+<p>This option will import an existing package and convert it into a package project. project_dir must not exist; it will be created. build-info will be in plist format, add the --json option to output in JSON format instead. (IE: <code>munkipkg --json --import /path/to/flat.pkg /path/to/project_dir</code>) Not all package formats are supported.</p>
+
+<p><code>--export-bom-info</code><br>
+This option causes munkipkg to export bom info from the built package to a file named "Bom.txt" in the root of the package project directory. Since git does not normally track ownership, group, or mode of tracked files, and since the "ownership" option to pkgbuild can also result in different owner and group of files included in the package payload, exporting this info into a text file allows you to track this metadata in git (or other version control) as well.</p>
+
+<p><code>--sync</code><br>
+This option causes munkipkg to read the Bom.txt file, and use its information to create any missing empty directories and to set the permissions on files and directories. See <a href="#important-git-notes"><strong>Important git notes</strong></a> below.</p>
+
+<p><code>--quiet</code><br>
+Causes munkipkg to suppress normal output messages. Errors will still be printed to stderr.</p>
+
+<p><code>--help</code>, <code>--version</code><br>
+Prints help message and tool version, respectively.</p>
+
+<h2>
+<a id="important-git-notes" class="anchor" href="#important-git-notes" aria-hidden="true"><span class="octicon octicon-link"></span></a>Important git notes</h2>
+
+<p>Git was designed to track source code. Its focus is tracking changes in the contents of files. It's not a perfect fit for tracking the parts making up a package. Specifically, git doesn't track owner or group of files or directories, and does not track any mode bits except for the execute bit for the owner. Git also does not track empty directories.</p>
+
+<p>This could be a problem if you want to store package project directories in git and <code>git clone</code> them; the clone operation will fail to replicate empty directories in the package project and will fail to set the correct mode for files and directories. (Owner and group are less of an issue if you use ownership=recommended for your pkgbuild options.)</p>
+
+<p>The solution to this problem is the Bom.txt file, which lists all the files and directories in the package, along with their mode, owner and group.</p>
+
+<p>This file (Bom.txt) can be tracked by git.</p>
+
+<p>You can create this file when building package by adding the <code>--export-bom-info</code> option. After the package is built, the Bom is extracted and <code>lsbom</code> is used to read its contents, which are written to "Bom.txt" at the root of the package project directory.</p>
+
+<p>A recommended workflow would be to build a project with <code>--export-bom-info</code> and add the Bom.txt file to the next git commit in order to preserve the data that git does not normally track.</p>
+
+<p>After doing a <code>git clone</code> or <code>git pull</code> operation, you can then use <code>munkipkg --sync project_name</code> to cause munkipkg to read the Bom.txt file and use the info within to create any missing directories and to set file and directory modes to those recorded in the bom.</p>
+
+<p>This workflow is not ideal, as it requires you to remember two new manual steps (<code>munkipkg --export</code> before doing a git commit and <code>munkipkg --sync</code> after doing a <code>git clone</code> or <code>git pull</code>) but is necessary to preserve data that git otherwise ignores.</p>
+        </section>
+
+        <footer>
+          Munki-pkg is maintained by <a href="https://github.com/munki">munki</a><br>
+          This page was generated by <a href="https://pages.github.com">GitHub Pages</a>. Tactile theme by <a href="https://twitter.com/jasonlong">Jason Long</a>.
+        </footer>
+
+        
+      </div>
+    </div>
+  </body>
+</html>

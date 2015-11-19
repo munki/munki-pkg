@@ -4,6 +4,8 @@
 
 munkipkg is a simple tool for building packages in a consistent, repeatable manner from source files and scripts in a project directory.
 
+While you can use munkipkg to generate packages for use with Munki (https://www.munki.org/munki/), the packages munkipkg builds are just normal Apple installer packages usable anywhere you can use Apple installer packages.
+
 Files, scripts, and metadata are stored in a way that is easy to track and manage using a version control system like git.
 
 Another tool that solves a similar problem is Joe Block's **The Luggage** (https://github.com/unixorn/luggage). If you are happily using The Luggage, you can probably safely ignore this tool.

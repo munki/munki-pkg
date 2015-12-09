@@ -112,6 +112,12 @@ def read_build_info_plist(plist_path):
         raise BuildError(
             "%s is not a valid xml plist: %s" % (plist_path, str(err)))
     validate_build_info_keys(build_info, plist_path)
+    if '${version}' in build_info['name']:
+        build_info['name'] = build_info['name'].replace(
+            '${version}',
+            build_info['version']
+        )
+
     return build_info
 
 
@@ -125,6 +131,11 @@ def read_build_info_json(json_path):
         raise BuildError(
             "%s is not a valid json file: %s" % (json_path, str(err)))
     validate_build_info_keys(build_info, json_path)
+    if '${version}' in build_info['name']:
+        build_info['name'] = build_info['name'].replace(
+            '${version}',
+            build_info['version']
+        )
     return build_info
 
 

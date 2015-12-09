@@ -125,7 +125,7 @@ String. Path to the intended install location of the payload on the target disk.
 **name**  
 String containing the package name. If this is missing, one is constructed using the name of the package project directory.
 
-If you would like munkipkg to automatically append a version to each package during build, add `-${version}` to the end of the name.
+munkipkg can automatically insert the version number into the output filename when building a package by inserting "${version}" into the value for the package name.
 
 JSON Example: 
 ```

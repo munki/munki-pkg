@@ -129,8 +129,8 @@ If you would like munki-pkg to automatically append a version to each package du
 
 JSON Example: 
 ```
-"name": "munki_kickstart.pkg"
-"name": "munki_kickstart.pkg-${version}"
+"name": "munki_kickstart-1.0.pkg"
+"name": "munki_kickstart-${version}.pkg-
 ```
 
 **ownership**  

@@ -343,6 +343,14 @@ def write_build_info(build_info, project_dir, options):
         raise MunkiPkgError(err)
 
 
+def create_default_gitignore(project_dir):
+    '''Create default .gitignore file for new projects'''
+    gitignore_file = os.path.join(project_dir, '.gitignore')
+    fileobj = open(gitignore_file, "w")
+    fileobj.write(GITIGNORE_DEFAULT)
+    fileobj.close()
+
+
 def create_template_project(project_dir, options):
     '''Create an empty pkg project directory with default settings'''
     if os.path.exists(project_dir):
@@ -351,7 +359,6 @@ def create_template_project(project_dir, options):
     payload_dir = os.path.join(project_dir, 'payload')
     scripts_dir = os.path.join(project_dir, 'scripts')
     build_dir = os.path.join(project_dir, 'build')
-    gitignore_file = os.path.join(project_dir, '.gitignore')
     try:
         os.mkdir(project_dir)
         os.mkdir(payload_dir)
@@ -359,9 +366,7 @@ def create_template_project(project_dir, options):
         os.mkdir(build_dir)
         build_info = default_build_info(project_dir)
         write_build_info(build_info, project_dir, options)
-        fileobj = open(gitignore_file, "w")
-        fileobj.write(GITIGNORE_DEFAULT)
-        fileobj.close()
+        create_default_gitignore(project_dir)
         display(
             "Created new package project at %s" % project_dir, options.quiet)
     except (OSError, MunkiPkgError), err:
@@ -722,6 +727,7 @@ def import_bundle_pkg(pkg_path, project_dir, options):
         copy_bundle_pkg_scripts(pkg_path, project_dir, options)
         convert_info_plist(pkg_path, project_dir, options)
         sync_from_bom_info(project_dir, options)
+        create_default_gitignore(project_dir)
         display("Created new package project at %s"
                 % project_dir, options.quiet)
         return 0
@@ -755,6 +761,7 @@ def import_flat_pkg(pkg_path, project_dir, options):
         expand_payload(project_dir)
         convert_packageinfo(pkg_path, project_dir, options)
         sync_from_bom_info(project_dir, options)
+        create_default_gitignore(project_dir)
         display("Created new package project at %s"
                 % project_dir, options.quiet)
         return 0

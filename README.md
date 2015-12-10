@@ -16,7 +16,7 @@ So why consider using munkipkg? It's simple and self-contained, with no external
 
 ##Basic operation
 
-munkipkg builds flat packages using Apple's pkgbuild and productbuild tools.
+munkipkg builds flat packages using Apple's `pkgbuild` and `productbuild` tools.
 
 ###Package project directories
 
@@ -134,7 +134,7 @@ JSON Example:
 ```
 
 **ownership**  
-String. One of "recommended", "preserve", or "preserve-other". Defaults to "recommended". See the man page for pkgbuild for a description of the ownership options.
+String. One of "recommended", "preserve", or "preserve-other". Defaults to "recommended". See the man page for `pkgbuild` for a description of the ownership options.
 
 **postinstall_action**  
 String. One of "none", "logout", or "restart". Defaults to "none".
@@ -198,7 +198,7 @@ See the **SIGNED PACKAGES** section of the man page for `pkgbuild` or the **SIGN
 
 ###Scripts
 
-munkipkg makes use of pkgbuild. Therefore the "main" scripts must be named either "preinstall" or "postinstall" (with no extensions) and must have their execute bit set. Other scripts can be called by the preinstall or postinstall scripts, but only those two scripts will be automatically called during package installation.
+munkipkg makes use of `pkgbuild`. Therefore the "main" scripts must be named either "preinstall" or "postinstall" (with no extensions) and must have their execute bit set. Other scripts can be called by the preinstall or postinstall scripts, but only those two scripts will be automatically called during package installation.
 
 
 ###Additional options
@@ -212,7 +212,7 @@ Creates a new empty template package project. See [**Creating a new project**](#
 This option will import an existing package and convert it into a package project. project_dir must not exist; it will be created. build-info will be in plist format, add the --json option to output in JSON format instead. (IE: `munkipkg --json --import /path/to/flat.pkg /path/to/project_dir`) Not all package formats are supported.
 
 `--export-bom-info`  
-This option causes munkipkg to export bom info from the built package to a file named "Bom.txt" in the root of the package project directory. Since git does not normally track ownership, group, or mode of tracked files, and since the "ownership" option to pkgbuild can also result in different owner and group of files included in the package payload, exporting this info into a text file allows you to track this metadata in git (or other version control) as well.
+This option causes munkipkg to export bom info from the built package to a file named "Bom.txt" in the root of the package project directory. Since git does not normally track ownership, group, or mode of tracked files, and since the "ownership" option to `pkgbuild` can also result in different owner and group of files included in the package payload, exporting this info into a text file allows you to track this metadata in git (or other version control) as well.
 
 `--sync`  
 This option causes munkipkg to read the Bom.txt file, and use its information to create any missing empty directories and to set the permissions on files and directories. See [**Important git notes**](#important-git-notes) below.
@@ -228,7 +228,7 @@ Prints help message and tool version, respectively.
 
 Git was designed to track source code. Its focus is tracking changes in the contents of files. It's not a perfect fit for tracking the parts making up a package. Specifically, git doesn't track owner or group of files or directories, and does not track any mode bits except for the execute bit for the owner. Git also does not track empty directories.
 
-This could be a problem if you want to store package project directories in git and `git clone` them; the clone operation will fail to replicate empty directories in the package project and will fail to set the correct mode for files and directories. (Owner and group are less of an issue if you use ownership=recommended for your pkgbuild options.)
+This could be a problem if you want to store package project directories in git and `git clone` them; the clone operation will fail to replicate empty directories in the package project and will fail to set the correct mode for files and directories. (Owner and group are less of an issue if you use ownership=recommended for your `pkgbuild` options.)
 
 The solution to this problem is the Bom.txt file, which lists all the files and directories in the package, along with their mode, owner and group.
 

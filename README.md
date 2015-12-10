@@ -130,7 +130,7 @@ munkipkg can automatically insert the version number into the output filename wh
 JSON Example: 
 ```
 "name": "munki_kickstart-1.0.pkg"
-"name": "munki_kickstart-${version}.pkg-
+"name": "munki_kickstart-${version}.pkg"
 ```
 
 **ownership**  

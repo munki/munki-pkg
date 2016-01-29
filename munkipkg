@@ -32,6 +32,12 @@ import subprocess
 import sys
 import tempfile
 
+try:
+    import yaml
+    yaml_installed = True
+except ImportError:
+    yaml_installed = False
+
 from xml.dom import minidom
 from xml.parsers.expat import ExpatError
 
@@ -85,7 +91,7 @@ def display(message, quiet=False):
 
 
 def validate_build_info_keys(build_info, file_path):
-    '''Validates the data read from build_info.(plist|json)'''
+    '''Validates the data read from build_info.(plist|json|yaml)'''
     valid_values = {
         'ownership': ['recommended', 'preserve', 'preserve-other'],
         'postinstall_action': ['none', 'logout', 'restart'],
@@ -131,6 +137,24 @@ def read_build_info_json(json_path):
         raise BuildError(
             "%s is not a valid json file: %s" % (json_path, str(err)))
     validate_build_info_keys(build_info, json_path)
+    if '${version}' in build_info['name']:
+        build_info['name'] = build_info['name'].replace(
+            '${version}',
+            build_info['version']
+        )
+    return build_info
+
+
+def read_build_info_yaml(yaml_path):
+    '''Reads and validates data in the build_info yaml file'''
+    build_info = None
+    try:
+        with open(yaml_path, 'r') as yaml_file:
+            build_info = yaml.load(yaml_file)
+    except ValueError, err:
+        raise BuildError(
+            "%s is not a valid yaml file: %s" % (yaml_path, str(err)))
+    validate_build_info_keys(build_info, yaml_path)
     if '${version}' in build_info['name']:
         build_info['name'] = build_info['name'].replace(
             '${version}',
@@ -207,7 +231,7 @@ def default_build_info(project_dir):
     return info
 
 
-def get_build_info(project_dir):
+def get_build_info(project_dir, options):
     '''Return dict with build info'''
     info = default_build_info(project_dir)
     info['project_dir'] = project_dir
@@ -217,15 +241,25 @@ def get_build_info(project_dir):
                       'suppress_bundle_relocation',
                       'distribution_style', 'signing_info']
     build_file = os.path.join(project_dir, BUILD_INFO_FILE)
-    file_info = {}
-    if os.path.exists("%s.plist" % build_file):
-        file_info = read_build_info_plist("%s.plist" % build_file)
-    elif os.path.exists("%s.json" % build_file):
+
+    file_type = 'yaml' if options.yaml else 'json' if options.json else 'plist'
+
+    file_info = None
+    if file_type == 'json' and os.path.exists("%s.json" % build_file):
         file_info = read_build_info_json("%s.json" % build_file)
+    elif file_type == 'yaml' and os.path.exists("%s.yaml" % build_file):
+        file_info = read_build_info_yaml("%s.yaml" % build_file)
+    elif os.path.exists("%s.plist" % build_file):
+        file_info = read_build_info_plist("%s.plist" % build_file)
+
     if file_info:
         for key in supported_keys:
             if key in file_info:
                 info[key] = file_info[key]
+    else:
+        print >> sys.stderr, (
+            "ERROR: No build-info file found!")
+        sys.exit(-1)
     return info
 
 
@@ -346,6 +380,13 @@ def write_build_info(build_info, project_dir, options):
                 json.dump(
                     build_info, json_file, ensure_ascii=True,
                     indent=4, separators=(',', ': '))
+        if options.yaml:
+            build_info_yaml = os.path.join(
+                project_dir, "%s.yaml" % BUILD_INFO_FILE)
+            with open(build_info_yaml, 'w') as yaml_file:
+                yaml_file.write(
+                    yaml.dump(build_info, default_flow_style=False)
+                )
         else:
             build_info_plist = os.path.join(
                 project_dir, "%s.plist" % BUILD_INFO_FILE)
@@ -509,7 +550,7 @@ def build(project_dir, options):
 
     build_info = {}
     try:
-        build_info = get_build_info(project_dir)
+        build_info = get_build_info(project_dir, options)
         add_project_subdirs(build_info)
 
         build_info['component_plist'] = None
@@ -821,6 +862,9 @@ def main():
     parser.add_option('--json', action='store_true',
                       help='Create build-info file in JSON format. '
                            'Useful only with --create and --import options.')
+    parser.add_option('--yaml', action='store_true',
+                      help='Create build-info file in YAML format. '
+                           'Useful only with --create and --import options.')
     parser.add_option('--export-bom-info', action='store_true',
                       help='Extracts the Bill-Of-Materials file from the '
                            'output package and exports it as Bom.txt under the '
@@ -843,6 +887,16 @@ def main():
     if len(arguments) > 1:
         print >> sys.stderr, (
             "ERROR: Only a single package project can be built at a time!")
+        sys.exit(-1)
+
+    if options.json and options.yaml:
+        print >> sys.stderr, (
+            "ERROR: Only a single build-info file can be built at a time!")
+        sys.exit(-1)
+
+    if options.yaml and not yaml_installed:
+        print >> sys.stderr, (
+            "ERROR: PyYAML missing. Please run pip install -r requirements.txt")
         sys.exit(-1)
 
     if options.create:

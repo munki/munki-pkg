@@ -12,7 +12,7 @@ Another tool that solves a similar problem is Joe Block's **The Luggage** (https
 
 **autopkg** (https://github.com/autopkg/autopkg) is another tool that has some overlap here. It's definitely possible to use autopkg to build packages from files and scripts on your local disk. See https://managingosx.wordpress.com/2015/07/30/using-autopkg-for-general-purpose-packaging/ and https://github.com/gregneagle/autopkg-packaging-demo for examples on how to do this.
 
-So why consider using munkipkg? It's simple and self-contained, with no external dependencies. It can use JSON for its build settings file/data, instead of Makefile systax or XML plists. It does not install a root-level system daemon as does autopkg. It can easily build distribution-style packages and can sign them. Finally, munkipkg can import existing packages.
+So why consider using munkipkg? It's simple and self-contained, with no external dependencies. It can use JSON or YAML for its build settings file/data, instead of Makefile systax or XML plists. It does not install a root-level system daemon as does autopkg. It can easily build distribution-style packages and can sign them. Finally, munkipkg can import existing packages.
 
 ##Basic operation
 
@@ -61,11 +61,13 @@ Causes munkipkg to build the package defined in package_project_directory. The b
 
 ###build-info
 
-Build options are stored in a file at the root of the package project. XML plist and JSON formats are supported. A build-info file is not strictly required, and a build will use default values if this file is missing.
+Build options are stored in a file at the root of the package project. XML plist and JSON formats are supported. YAML is supported if you also install the Python PyYAML module. A build-info file is not strictly required, and a build will use default values if this file is missing.
+
+XML plist is the default and preferred format. It can represent all the needed OS X data structures. JSON and YAML are also supported, but there is no guarantee that these formats will support future features of munkipkg. (Translation: use XML plist format unless it really, really bothers you; in that case use JSON or YAML but don't come crying to me if you can't use shiny new features with your JSON or YAML files. And please don't ask for help _formatting_ your JSON or YAML!)
 
 ####build-info.plist
 
-This must be in XML (text) format. Binary plists are not supported. For a new project created with `munkipkg --create Foo`, the build-info.plist looks like this:
+This must be in XML (text) format. Binary plists and "old-style-ASCII"-formatted plists are not supported. For a new project created with `munkipkg --create Foo`, the build-info.plist looks like this:
 
 ```
 <?xml version="1.0" encoding="UTF-8"?>
@@ -110,6 +112,9 @@ Alternately, you may specify build-info in JSON format. A new project created wi
 ```
 If both build-info.plist and build-info.json are present, the plist file will be used; the json file will be ignored.
 
+####build-info.yaml
+
+To be documented in the future. Of course, if you really like YAML you don't need no stinkin' documentation on how to use it.
 
 ####build-info keys
 

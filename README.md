@@ -69,7 +69,7 @@ XML plist is the default and preferred format. It can represent all the needed O
 
 This must be in XML (text) format. Binary plists and "old-style-ASCII"-formatted plists are not supported. For a new project created with `munkipkg --create Foo`, the build-info.plist looks like this:
 
-```
+```plist
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -98,7 +98,7 @@ This must be in XML (text) format. Binary plists and "old-style-ASCII"-formatted
 
 Alternately, you may specify build-info in JSON format. A new project created with `munkipkg --create --json Foo` would have this build-info.json file:
 
-```
+```json
 {
     "ownership": "recommended",
     "suppress_bundle_relocation": true,
@@ -114,7 +114,20 @@ If both build-info.plist and build-info.json are present, the plist file will be
 
 ####build-info.yaml
 
-To be documented in the future. Of course, if you really like YAML you don't need no stinkin' documentation on how to use it.
+As a third alternative, you may specify build-info in YAML format. A new project created with `munkipkg --create --yaml Foo` would have this build-info.yaml file:
+
+```yaml
+distribution_style: false
+identifier: com.github.munki.pkg.Foo
+install_location: /
+name: Foo.pkg
+ownership: recommended
+postinstall_action: none
+suppress_bundle_relocation: true
+version: '1.0'
+```
+
+If both build-info.plist and build-info.yaml are present, the plist file will be used; the yaml file will be ignored.
 
 ####build-info keys
 
@@ -133,7 +146,7 @@ String containing the package name. If this is missing, one is constructed using
 munkipkg can automatically insert the version number into the output filename when building a package by inserting "${version}" into the value for the package name.
 
 JSON Example: 
-```
+```json
 "name": "munki_kickstart-1.0.pkg"
 "name": "munki_kickstart-${version}.pkg"
 ```
@@ -167,7 +180,7 @@ If the payload folder exists, but is empty, you'll get a "pseudo-payload-free" p
 
 You may sign packages as part of the build process by adding a signing\_info dictionary to the build\_info.plist:
 
-```
+```plist
     <key>signing_info</key>
     <dict>
         <key>identity</key>
@@ -186,7 +199,7 @@ You may sign packages as part of the build process by adding a signing\_info dic
 
 or, in JSON format in a build-info.json file:
 
-```
+```json
     "signing_info": {
         "identity": "Signing Identity Common Name",
         "keychain": "/path/to/SpecialKeychain"

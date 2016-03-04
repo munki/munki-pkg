@@ -241,8 +241,20 @@ def get_build_info(project_dir, options):
                       'suppress_bundle_relocation',
                       'distribution_style', 'signing_info']
     build_file = os.path.join(project_dir, BUILD_INFO_FILE)
-
-    file_type = 'yaml' if options.yaml else 'json' if options.json else 'plist'
+    file_type = None
+    if not options.yaml and not options.json:
+        file_types = ['plist', 'json', 'yaml']
+        for ext in file_types:
+            if os.path.exists(build_file + '.' + ext):
+                if file_type is None:
+                    file_type = ext
+                else:
+                    print >> sys.stderr, (
+                        "ERROR: Multiple build-info files found!")
+                    sys.exit(-1)
+    else:
+        file_type = (
+            'yaml' if options.yaml else 'json' if options.json else 'plist')
 
     file_info = None
     if file_type == 'json' and os.path.exists("%s.json" % build_file):
@@ -301,6 +313,9 @@ def sync_from_bom_info(project_dir, options):
                 parts = item.rstrip('\n').split('\t')
                 path = parts[0].lstrip('./')
                 full_mode = parts[1]
+                user_group = parts[2].partition('/')
+                user = user_group[0]
+                group = user_group[2]
                 desired_mode = int(full_mode[-4:], 8)
                 payload_path = os.path.join(payload_dir, path)
                 if os.path.exists(payload_path):

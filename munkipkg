@@ -421,13 +421,16 @@ def create_default_gitignore(project_dir):
 def create_template_project(project_dir, options):
     '''Create an empty pkg project directory with default settings'''
     if os.path.exists(project_dir):
-        print >> sys.stderr, "ERROR: %s already exists!" % project_dir
-        return -1
+        if not options.force:
+            print >> sys.stderr, "ERROR: %s already exists! " \
+                                 "Use --force to convert it to a project directory." % project_dir
+            return -1
     payload_dir = os.path.join(project_dir, 'payload')
     scripts_dir = os.path.join(project_dir, 'scripts')
     build_dir = os.path.join(project_dir, 'build')
     try:
-        os.mkdir(project_dir)
+        if not os.path.exists(project_dir):
+            os.mkdir(project_dir)
         os.mkdir(payload_dir)
         os.mkdir(scripts_dir)
         os.mkdir(build_dir)
@@ -893,6 +896,8 @@ def main():
     parser.add_option('--quiet', action='store_true',
                       help='Inhibits status messages on stdout. '
                            'Any error messages are still sent to stderr.')
+    parser.add_option('-f','--force', action='store_true',
+                      help='Forces creation of project directory if it already exists. ')
     options, arguments = parser.parse_args()
 
     if len(arguments) == 0:
@@ -911,7 +916,9 @@ def main():
 
     if options.yaml and not yaml_installed:
         print >> sys.stderr, (
-            "ERROR: PyYAML missing. Please run pip install -r requirements.txt")
+            "ERROR: PyYAML missing. Please run 'sudo easy_install pip' " \
+            "followed by 'sudo pip install -r requirements.txt'"
+            )
         sys.exit(-1)
 
     if options.create:

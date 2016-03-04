@@ -249,9 +249,8 @@ def get_build_info(project_dir, options):
                 if file_type is None:
                     file_type = ext
                 else:
-                    print >> sys.stderr, (
+                    raise MunkiPkgError(
                         "ERROR: Multiple build-info files found!")
-                    sys.exit(-1)
     else:
         file_type = (
             'yaml' if options.yaml else 'json' if options.json else 'plist')
@@ -269,10 +268,35 @@ def get_build_info(project_dir, options):
             if key in file_info:
                 info[key] = file_info[key]
     else:
-        print >> sys.stderr, (
-            "ERROR: No build-info file found!")
-        sys.exit(-1)
+        raise MunkiPkgError("ERROR: No build-info file found!")
+
     return info
+
+
+def non_recommended_permissions_in_bom(project_dir):
+    '''Analyzes Bom.txt to determine if there are any items with owner/group
+    other than 0/0, which implies we should handle ownership differently'''
+
+    bom_list_file = os.path.join(project_dir, BOM_TEXT_FILE)
+    if not os.path.exists(bom_list_file):
+        return False
+    try:
+        with open(bom_list_file) as fileref:
+            while True:
+                item = fileref.readline()
+                if not item:
+                    break
+                if item == '\n':
+                    # shouldn't be any empty lines in Bom.txt, but...
+                    continue
+                parts = item.rstrip('\n').split('\t')
+                user_group = parts[2]
+                if user_group != '0/0':
+                    return True
+        return False
+    except (OSError, ValueError), err:
+        print >> sys.stderr, 'ERROR: %s' % err
+        return False
 
 
 def sync_from_bom_info(project_dir, options):
@@ -286,17 +310,23 @@ def sync_from_bom_info(project_dir, options):
     # possible to-do: a refinement of the above preflight check
     # -- also check file checksums
 
-    # possible to-do: detect if we are effectively running as root,
-    # if so, also sync owner and group
-
     bom_list_file = os.path.join(project_dir, BOM_TEXT_FILE)
     payload_dir = os.path.join(project_dir, 'payload')
-
+    try:
+        build_info = get_build_info(project_dir, options)
+    except MunkiPkgError:
+        build_info = default_build_info(project_dir)
+    running_as_root = (os.geteuid() == 0)
     if not os.path.exists(bom_list_file):
         print >> sys.stderr, (
             "ERROR: Can't sync with bom info: no %s found in project directory."
             % BOM_TEXT_FILE)
         return -1
+    if build_info['ownership'] != 'recommended' and not running_as_root:
+        print >> sys.stderr, (
+            "\nWARNING: build-info ownership: %s might require using "
+            "sudo to properly sync owner and group for payload files.\n"
+            % build_info['ownership'])
 
     returncode = 0
     changes_made = 0
@@ -314,8 +344,8 @@ def sync_from_bom_info(project_dir, options):
                 path = parts[0].lstrip('./')
                 full_mode = parts[1]
                 user_group = parts[2].partition('/')
-                user = user_group[0]
-                group = user_group[2]
+                desired_user = int(user_group[0])
+                desired_group = int(user_group[2])
                 desired_mode = int(full_mode[-4:], 8)
                 payload_path = os.path.join(payload_dir, path)
                 if os.path.exists(payload_path):
@@ -341,6 +371,17 @@ def sync_from_bom_info(project_dir, options):
                         "ERROR: File %s is missing in payload" % payload_path)
                     returncode = -1
                     break
+                if running_as_root:
+                    # we can sync owner and group as well
+                    current_user = os.stat(payload_path).st_uid
+                    current_group = os.stat(payload_path).st_gid
+                    if (current_user != desired_user or
+                            current_group != desired_group):
+                        display("Changing user/group of %s to %s/%s"
+                                % (payload_path, desired_user, desired_group),
+                                options.quiet)
+                        os.chown(payload_path, desired_user, desired_group)
+                        changes_made += 1
 
     except (OSError, ValueError), err:
         print >> sys.stderr, 'ERROR: %s' % err
@@ -568,7 +609,18 @@ def build(project_dir, options):
 
     build_info = {}
     try:
-        build_info = get_build_info(project_dir, options)
+        try:
+            build_info = get_build_info(project_dir, options)
+        except MunkiPkgError, err:
+            print >> sys.stderr, str(err)
+            exit(-1)
+
+        if build_info['ownership'] in ['preserve', 'preserve-other']:
+            if os.geteuid() != 0 :
+                print >> sys.stderr, (
+                    "\nWARNING: build-info ownership: %s might require using "
+                    "sudo to build this package.\n" % build_info['ownership'])
+
         add_project_subdirs(build_info)
 
         build_info['component_plist'] = None
@@ -653,6 +705,8 @@ def convert_packageinfo(pkg_path, project_dir, options):
     build_info['postinstall_action'] = get_pkginfo_attr(
         pkginfo, 'postinstall-action') or 'none'
     build_info['name'] = os.path.basename(pkg_path)
+    if non_recommended_permissions_in_bom(project_dir):
+        build_info['ownership'] = 'preserve'
 
     distribution_file = os.path.join(project_dir, 'Distribution')
     build_info['distribution_style'] = os.path.exists(distribution_file)
@@ -679,6 +733,8 @@ def convert_info_plist(pkg_path, project_dir, options):
             ['RequireLogout', 'RecommendLogout']):
         build_info['postinstall_action'] = 'logout'
     build_info['name'] = os.path.basename(pkg_path)
+    if non_recommended_permissions_in_bom(project_dir):
+        build_info['ownership'] = 'preserve'
     write_build_info(build_info, project_dir, options)
 
 
@@ -796,6 +852,14 @@ def import_bundle_pkg(pkg_path, project_dir, options):
 
         copy_bundle_pkg_scripts(pkg_path, project_dir, options)
         convert_info_plist(pkg_path, project_dir, options)
+        if (non_recommended_permissions_in_bom(project_dir) and 
+                os.geteuid() != 0):
+            print >> sys.stderr, (
+                '\nWARNING: package contains non-default owner/group on some '
+                'files. build-info ownership has been set to "preserve". '
+                '\nCheck the bom for accuracy.'
+                '\nRun munkipkg --sync with sudo to apply the correct owner '
+                'and group to payload files.\n')
         sync_from_bom_info(project_dir, options)
         create_default_gitignore(project_dir)
         display("Created new package project at %s"
@@ -830,6 +894,14 @@ def import_flat_pkg(pkg_path, project_dir, options):
 
         expand_payload(project_dir)
         convert_packageinfo(pkg_path, project_dir, options)
+        if (non_recommended_permissions_in_bom(project_dir) and 
+                os.geteuid() != 0):
+            print >> sys.stderr, (
+                '\nWARNING: package contains non-default owner/group on some '
+                'files. build-info ownership has been set to "preserve". '
+                '\nCheck the bom for accuracy.'
+                '\nRun munkipkg --sync with sudo to apply the correct owner '
+                'and group to payload files.\n')
         sync_from_bom_info(project_dir, options)
         create_default_gitignore(project_dir)
         display("Created new package project at %s"
@@ -897,7 +969,8 @@ def main():
                       help='Inhibits status messages on stdout. '
                            'Any error messages are still sent to stderr.')
     parser.add_option('-f','--force', action='store_true',
-                      help='Forces creation of project directory if it already exists. ')
+                      help='Forces creation of project directory if it already '
+                           'exists. ')
     options, arguments = parser.parse_args()
 
     if len(arguments) == 0:

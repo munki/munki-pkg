@@ -12,7 +12,7 @@ Another tool that solves a similar problem is Joe Block's **The Luggage** (https
 
 **autopkg** (https://github.com/autopkg/autopkg) is another tool that has some overlap here. It's definitely possible to use autopkg to build packages from files and scripts on your local disk. See https://managingosx.wordpress.com/2015/07/30/using-autopkg-for-general-purpose-packaging/ and https://github.com/gregneagle/autopkg-packaging-demo for examples on how to do this.
 
-So why consider using munkipkg? It's simple and self-contained, with no external dependencies. It can use JSON or YAML for its build settings file/data, instead of Makefile systax or XML plists. It does not install a root-level system daemon as does autopkg. It can easily build distribution-style packages and can sign them. Finally, munkipkg can import existing packages.
+So why consider using munkipkg? It's simple and self-contained, with no external dependencies. It can use JSON or YAML for its build settings file/data, instead of Makefile syntax or XML plists. It does not install a root-level system daemon as does autopkg. It can easily build distribution-style packages and can sign them. Finally, munkipkg can import existing packages.
 
 ##Basic operation
 

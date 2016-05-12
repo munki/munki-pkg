@@ -110,7 +110,9 @@ Alternately, you may specify build-info in JSON format. A new project created wi
     "install_location": "/"
 }
 ```
-If both build-info.plist and build-info.json are present, the plist file will be used; the json file will be ignored.
+If both build-info.plist and build-info.json are present, you will receive the following error:
+
+`ERROR: Multiple build-info files found!`
 
 ####build-info.yaml
 

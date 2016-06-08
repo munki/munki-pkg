@@ -216,7 +216,7 @@ See the **SIGNED PACKAGES** section of the man page for `pkgbuild` or the **SIGN
 
 ###Scripts
 
-munkipkg makes use of `pkgbuild`. Therefore the "main" scripts must be named either "preinstall" or "postinstall" (with no extensions) and must have their execute bit set. Other scripts can be called by the preinstall or postinstall scripts, but only those two scripts will be automatically called during package installation.
+munkipkg makes use of `pkgbuild`. Therefore the "main" scripts must be named either "preinstall" or "postinstall" (with no extensions). Other scripts can be called by the preinstall or postinstall scripts, but only those two scripts will be automatically called during package installation.
 
 
 ###Additional options

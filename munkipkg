@@ -639,6 +639,16 @@ def build(project_dir, options):
             if retcode:
                 raise BuildError("Could not remove existing %s" % outputname)
 
+        # remove .DS_Store files from the payload
+        retcode = subprocess.call(["/usr/bin/find",
+                                  build_info['payload'],
+                                  "-type", "f",
+                                  "-name", ".DS_Store",
+                                  "-exec", "rm", "-f", "{}", ";"])
+        if retcode:
+            print >> sys.stderr, (
+                "\nWARNING: Unable to remove .DS_Store files from payload.")
+
         # build the pkg
         build_pkg(build_info, options)
 

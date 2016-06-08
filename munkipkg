@@ -649,6 +649,17 @@ def build(project_dir, options):
             print >> sys.stderr, (
                 "\nWARNING: Unable to remove .DS_Store files from payload.")
 
+        # make scripts executable
+        for pkgscript in ("preinstall", "postinstall"):
+            if os.path.exists(build_info['scripts'] + "/" + pkgscript):
+                retcode = subprocess.call([
+                    "/bin/chmod", "+x",
+                    build_info['scripts'] + "/" + pkgscript])
+                if retcode:
+                    print >> sys.stderr, (
+                        "\nWARNING: Unable to make " + pkgscript + " script "
+                        "executable.")
+
         # build the pkg
         build_pkg(build_info, options)
 

@@ -639,6 +639,27 @@ def build(project_dir, options):
             if retcode:
                 raise BuildError("Could not remove existing %s" % outputname)
 
+        # remove .DS_Store files from the payload
+        retcode = subprocess.call(["/usr/bin/find",
+                                  build_info['payload'],
+                                  "-type", "f",
+                                  "-name", ".DS_Store",
+                                  "-exec", "rm", "-f", "{}", ";"])
+        if retcode:
+            print >> sys.stderr, (
+                "\nWARNING: Unable to remove .DS_Store files from payload.")
+
+        # make scripts executable
+        for pkgscript in ("preinstall", "postinstall"):
+            if os.path.exists(build_info['scripts'] + "/" + pkgscript):
+                retcode = subprocess.call([
+                    "/bin/chmod", "+x",
+                    build_info['scripts'] + "/" + pkgscript])
+                if retcode:
+                    print >> sys.stderr, (
+                        "\nWARNING: Unable to make " + pkgscript + " script "
+                        "executable.")
+
         # build the pkg
         build_pkg(build_info, options)
 
@@ -852,7 +873,7 @@ def import_bundle_pkg(pkg_path, project_dir, options):
 
         copy_bundle_pkg_scripts(pkg_path, project_dir, options)
         convert_info_plist(pkg_path, project_dir, options)
-        if (non_recommended_permissions_in_bom(project_dir) and 
+        if (non_recommended_permissions_in_bom(project_dir) and
                 os.geteuid() != 0):
             print >> sys.stderr, (
                 '\nWARNING: package contains non-default owner/group on some '
@@ -894,7 +915,7 @@ def import_flat_pkg(pkg_path, project_dir, options):
 
         expand_payload(project_dir)
         convert_packageinfo(pkg_path, project_dir, options)
-        if (non_recommended_permissions_in_bom(project_dir) and 
+        if (non_recommended_permissions_in_bom(project_dir) and
                 os.geteuid() != 0):
             print >> sys.stderr, (
                 '\nWARNING: package contains non-default owner/group on some '

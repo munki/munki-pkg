@@ -852,7 +852,7 @@ def import_bundle_pkg(pkg_path, project_dir, options):
 
         copy_bundle_pkg_scripts(pkg_path, project_dir, options)
         convert_info_plist(pkg_path, project_dir, options)
-        if (non_recommended_permissions_in_bom(project_dir) and 
+        if (non_recommended_permissions_in_bom(project_dir) and
                 os.geteuid() != 0):
             print >> sys.stderr, (
                 '\nWARNING: package contains non-default owner/group on some '
@@ -894,7 +894,7 @@ def import_flat_pkg(pkg_path, project_dir, options):
 
         expand_payload(project_dir)
         convert_packageinfo(pkg_path, project_dir, options)
-        if (non_recommended_permissions_in_bom(project_dir) and 
+        if (non_recommended_permissions_in_bom(project_dir) and
                 os.geteuid() != 0):
             print >> sys.stderr, (
                 '\nWARNING: package contains non-default owner/group on some '

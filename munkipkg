@@ -639,6 +639,11 @@ def build(project_dir, options):
             if retcode:
                 raise BuildError("Could not remove existing %s" % outputname)
 
+        # remove .DS_Store file from the scripts folder
+        if os.path.exists(os.path.join(build_info['scripts'], ".DS_Store")):
+            display("Removing .DS_Store file from the scripts folder")
+            os.remove(os.path.join(build_info['scripts'], ".DS_Store"))
+
         # build the pkg
         build_pkg(build_info, options)
 

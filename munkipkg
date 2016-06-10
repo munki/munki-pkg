@@ -641,14 +641,16 @@ def build(project_dir, options):
 
         # remove .DS_Store file from the scripts folder
         if os.path.exists(os.path.join(build_info['scripts'], ".DS_Store")):
-            display("Removing .DS_Store file from the scripts folder")
+            display("Removing .DS_Store file from the scripts folder",
+                    options.quiet)
             os.remove(os.path.join(build_info['scripts'], ".DS_Store"))
 
         # make scripts executable
         for pkgscript in ("preinstall", "postinstall"):
             scriptpath = os.path.join(build_info['scripts'], pkgscript)
             if os.path.exists(scriptpath) and oct(os.stat(scriptpath).st_mode)[-3:] != '755':
-                display("Making %s script executable" % pkgscript)
+                display("Making %s script executable" % pkgscript,
+                        options.quiet)
                 os.chmod(scriptpath, 0o755)
 
         # build the pkg

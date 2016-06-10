@@ -646,9 +646,10 @@ def build(project_dir, options):
 
         # make scripts executable
         for pkgscript in ("preinstall", "postinstall"):
-            display("Making %s script executable" % pkgscript)
-            if os.path.exists(os.path.join(build_info['scripts'], pkgscript)):
-                os.chmod(os.path.join(build_info['scripts'], pkgscript), 0o755)
+            scriptpath = os.path.join(build_info['scripts'], pkgscript)
+            if os.path.exists(scriptpath) and oct(os.stat(scriptpath).st_mode)[-3:] != '755':
+                display("Making %s script executable" % pkgscript)
+                os.chmod(scriptpath, 0o755)
 
         # build the pkg
         build_pkg(build_info, options)

@@ -616,7 +616,7 @@ def build(project_dir, options):
             exit(-1)
 
         if build_info['ownership'] in ['preserve', 'preserve-other']:
-            if os.geteuid() != 0 :
+            if os.geteuid() != 0:
                 print >> sys.stderr, (
                     "\nWARNING: build-info ownership: %s might require using "
                     "sudo to build this package.\n" % build_info['ownership'])
@@ -638,6 +638,20 @@ def build(project_dir, options):
             retcode = subprocess.call(["/bin/rm", "-rf", outputname])
             if retcode:
                 raise BuildError("Could not remove existing %s" % outputname)
+
+        # remove .DS_Store file from the scripts folder
+        if os.path.exists(os.path.join(build_info['scripts'], ".DS_Store")):
+            display("Removing .DS_Store file from the scripts folder",
+                    options.quiet)
+            os.remove(os.path.join(build_info['scripts'], ".DS_Store"))
+
+        # make scripts executable
+        for pkgscript in ("preinstall", "postinstall"):
+            scriptpath = os.path.join(build_info['scripts'], pkgscript)
+            if os.path.exists(scriptpath) and (os.stat(scriptpath).st_mode & 0o500) != 0o500:
+                display("Making %s script executable" % pkgscript,
+                        options.quiet)
+                os.chmod(scriptpath, 0o755)
 
         # build the pkg
         build_pkg(build_info, options)
@@ -852,7 +866,7 @@ def import_bundle_pkg(pkg_path, project_dir, options):
 
         copy_bundle_pkg_scripts(pkg_path, project_dir, options)
         convert_info_plist(pkg_path, project_dir, options)
-        if (non_recommended_permissions_in_bom(project_dir) and 
+        if (non_recommended_permissions_in_bom(project_dir) and
                 os.geteuid() != 0):
             print >> sys.stderr, (
                 '\nWARNING: package contains non-default owner/group on some '
@@ -894,7 +908,7 @@ def import_flat_pkg(pkg_path, project_dir, options):
 
         expand_payload(project_dir)
         convert_packageinfo(pkg_path, project_dir, options)
-        if (non_recommended_permissions_in_bom(project_dir) and 
+        if (non_recommended_permissions_in_bom(project_dir) and
                 os.geteuid() != 0):
             print >> sys.stderr, (
                 '\nWARNING: package contains non-default owner/group on some '
@@ -968,7 +982,7 @@ def main():
     parser.add_option('--quiet', action='store_true',
                       help='Inhibits status messages on stdout. '
                            'Any error messages are still sent to stderr.')
-    parser.add_option('-f','--force', action='store_true',
+    parser.add_option('-f', '--force', action='store_true',
                       help='Forces creation of project directory if it already '
                            'exists. ')
     options, arguments = parser.parse_args()

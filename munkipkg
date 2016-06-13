@@ -463,8 +463,10 @@ def create_template_project(project_dir, options):
     '''Create an empty pkg project directory with default settings'''
     if os.path.exists(project_dir):
         if not options.force:
-            print >> sys.stderr, "ERROR: %s already exists! " \
-                                 "Use --force to convert it to a project directory." % project_dir
+            print >> sys.stderr, (
+                "ERROR: %s already exists! "
+                "Use --force to convert it to a project directory."
+                % project_dir)
             return -1
     payload_dir = os.path.join(project_dir, 'payload')
     scripts_dir = os.path.join(project_dir, 'scripts')
@@ -639,19 +641,21 @@ def build(project_dir, options):
             if retcode:
                 raise BuildError("Could not remove existing %s" % outputname)
 
-        # remove .DS_Store file from the scripts folder
-        if os.path.exists(os.path.join(build_info['scripts'], ".DS_Store")):
-            display("Removing .DS_Store file from the scripts folder",
-                    options.quiet)
-            os.remove(os.path.join(build_info['scripts'], ".DS_Store"))
-
-        # make scripts executable
-        for pkgscript in ("preinstall", "postinstall"):
-            scriptpath = os.path.join(build_info['scripts'], pkgscript)
-            if os.path.exists(scriptpath) and (os.stat(scriptpath).st_mode & 0o500) != 0o500:
-                display("Making %s script executable" % pkgscript,
+        if build_info['scripts']:
+            # remove .DS_Store file from the scripts folder
+            if os.path.exists(os.path.join(build_info['scripts'], ".DS_Store")):
+                display("Removing .DS_Store file from the scripts folder",
                         options.quiet)
-                os.chmod(scriptpath, 0o755)
+                os.remove(os.path.join(build_info['scripts'], ".DS_Store"))
+
+            # make scripts executable
+            for pkgscript in ("preinstall", "postinstall"):
+                scriptpath = os.path.join(build_info['scripts'], pkgscript)
+                if (os.path.exists(scriptpath) and
+                        (os.stat(scriptpath).st_mode & 0o500) != 0o500):
+                    display("Making %s script executable" % pkgscript,
+                            options.quiet)
+                    os.chmod(scriptpath, 0o755)
 
         # build the pkg
         build_pkg(build_info, options)

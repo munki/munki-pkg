@@ -223,7 +223,7 @@ def default_build_info(project_dir):
     info['suppress_bundle_relocation'] = True
     info['postinstall_action'] = 'none'
     basename = os.path.basename(project_dir.rstrip('/')).replace(" ", "")
-    info['name'] = basename + '.pkg'
+    info['name'] = basename + '-${version}.pkg'
     info['identifier'] = "com.github.munki.pkg." + basename
     info['install_location'] = '/'
     info['version'] = "1.0"

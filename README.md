@@ -144,12 +144,13 @@ String. Path to the intended install location of the payload on the target disk.
 **name**  
 String containing the package name. If this is missing, one is constructed using the name of the package project directory.
 
-By default, the package name is suffixed with the version number using `${version}`. This suffix can be removed if desired.
+By default, the package name is suffixed with the version number using `${version}`. This suffix can be removed if desired, or it can be specified manually.
 
 JSON Example: 
 ```json
 "name": "munki_kickstart-${version}.pkg"
 "name": "munki_kickstart.pkg"
+"name": "munki_kickstart-1.0.pkg"
 ```
 
 **ownership**  

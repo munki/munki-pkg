@@ -206,7 +206,7 @@ or, in JSON format in a build-info.json file:
 ```json
     "signing_info": {
         "identity": "Signing Identity Common Name",
-        "keychain": "/path/to/SpecialKeychain"
+        "keychain": "/path/to/SpecialKeychain",
         "additional_cert_names": ["Intermediate CA Common Name 1",
                                   "Intermediate CA Common Name 2"],
         "timestamp": true,

@@ -81,7 +81,7 @@ This must be in XML (text) format. Binary plists and "old-style-ASCII"-formatted
     <key>install_location</key>
     <string>/</string>
     <key>name</key>
-    <string>Foo.pkg</string>
+    <string>Foo-${version}.pkg</string>
     <key>ownership</key>
     <string>recommended</string>
     <key>postinstall_action</key>
@@ -100,16 +100,17 @@ Alternately, you may specify build-info in JSON format. A new project created wi
 
 ```json
 {
-    "ownership": "recommended",
-    "suppress_bundle_relocation": true,
-    "identifier": "com.github.munki.pkg.Foo",
     "postinstall_action": "none",
+    "suppress_bundle_relocation": true,
+    "name": "Foo-${version}.pkg",
     "distribution_style": false,
+    "install_location": "/",
     "version": "1.0",
-    "name": "Foo.pkg",
-    "install_location": "/"
+    "ownership": "recommended",
+    "identifier": "com.github.munki.pkg.Foo"
 }
 ```
+
 If both build-info.plist and build-info.json are present, the plist file will be used; the json file will be ignored.
 
 ####build-info.yaml
@@ -120,7 +121,7 @@ As a third alternative, you may specify build-info in YAML format. A new project
 distribution_style: false
 identifier: com.github.munki.pkg.Foo
 install_location: /
-name: Foo.pkg
+name: Foo-${version}.pkg
 ownership: recommended
 postinstall_action: none
 suppress_bundle_relocation: true
@@ -143,12 +144,12 @@ String. Path to the intended install location of the payload on the target disk.
 **name**  
 String containing the package name. If this is missing, one is constructed using the name of the package project directory.
 
-munkipkg can automatically insert the version number into the output filename when building a package by inserting "${version}" into the value for the package name.
+By default, the package name is suffixed with the version number using `${version}`. This suffix can be removed if desired.
 
 JSON Example: 
 ```json
-"name": "munki_kickstart-1.0.pkg"
 "name": "munki_kickstart-${version}.pkg"
+"name": "munki_kickstart.pkg"
 ```
 
 **ownership**  
@@ -162,6 +163,8 @@ Boolean: true or false. Defaults to true. If present and false, bundle relocatio
 
 **version**  
 A string representation of the version number. Defaults to "1.0".
+
+The value of this key is referenced in the default package name using `${version}`. (See the **name** key details above.)
 
 **signing_info**  
 Dictionary of signing options. See below.

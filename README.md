@@ -1,6 +1,6 @@
-#munkipkg
+# munkipkg
 
-##Introduction
+## Introduction
 
 munkipkg is a simple tool for building packages in a consistent, repeatable manner from source files and scripts in a project directory.
 
@@ -14,16 +14,16 @@ Another tool that solves a similar problem is Joe Block's **The Luggage** (https
 
 So why consider using munkipkg? It's simple and self-contained, with no external dependencies. It can use JSON or YAML for its build settings file/data, instead of Makefile syntax or XML plists. It does not install a root-level system daemon as does autopkg. It can easily build distribution-style packages and can sign them. Finally, munkipkg can import existing packages.
 
-##Basic operation
+## Basic operation
 
 munkipkg builds flat packages using Apple's `pkgbuild` and `productbuild` tools.
 
-###Package project directories
+### Package project directories
 
 munkipkg builds packages from a "package project directory". At its simplest, a package project directory is a directory containing a "payload" directory, which itself contains the files to be packaged. More typically, the directory also contains a "build-info.plist" file containing specific settings for the build. The package project directory may also contain a "scripts" directory containing any scripts (and, optionally, additional files used by the scripts) to be included in the package.
 
 
-###Package project directory layout
+### Package project directory layout
 ```
 project_dir/
     build-info.plist
@@ -31,7 +31,7 @@ project_dir/
     scripts/
 ```
 
-###Creating a new project
+### Creating a new project
 
 munkipkg can create an empty package project directory for you:
 
@@ -41,7 +41,7 @@ munkipkg can create an empty package project directory for you:
 
 Once you have a project directory, you simply copy the files you wish to package into the payload directory, and add a preinstall and/or postinstall script to the scripts directory. You may also wish to edit the build-info.plist.
 
-###Importing an existing package
+### Importing an existing package
 
 Another way to create a package project is to import an existing package:
 
@@ -51,7 +51,7 @@ Another way to create a package project is to import an existing package:
 Complex or non-standard packages may not be extracted with 100% fidelity, and not all package formats are supported. Specifically, metapackages are not supported, and distribution packages containing multiple sub-packages are not supported. In these cases, consider importing the individual sub-packages.
 
 
-###Building a package
+### Building a package
 
 This is the central task of munkipkg.
 
@@ -59,13 +59,13 @@ This is the central task of munkipkg.
 
 Causes munkipkg to build the package defined in package_project_directory. The built package is created in a build/ directory inside the project directory.
 
-###build-info
+### build-info
 
 Build options are stored in a file at the root of the package project. XML plist and JSON formats are supported. YAML is supported if you also install the Python PyYAML module. A build-info file is not strictly required, and a build will use default values if this file is missing.
 
 XML plist is the default and preferred format. It can represent all the needed OS X data structures. JSON and YAML are also supported, but there is no guarantee that these formats will support future features of munkipkg. (Translation: use XML plist format unless it really, really bothers you; in that case use JSON or YAML but don't come crying to me if you can't use shiny new features with your JSON or YAML files. And please don't ask for help _formatting_ your JSON or YAML!)
 
-####build-info.plist
+#### build-info.plist
 
 This must be in XML (text) format. Binary plists and "old-style-ASCII"-formatted plists are not supported. For a new project created with `munkipkg --create Foo`, the build-info.plist looks like this:
 
@@ -94,7 +94,7 @@ This must be in XML (text) format. Binary plists and "old-style-ASCII"-formatted
 </plist>
 ```
 
-####build-info.json
+#### build-info.json
 
 Alternately, you may specify build-info in JSON format. A new project created with `munkipkg --create --json Foo` would have this build-info.json file:
 
@@ -113,7 +113,7 @@ Alternately, you may specify build-info in JSON format. A new project created wi
 
 If both build-info.plist and build-info.json are present, the plist file will be used; the json file will be ignored.
 
-####build-info.yaml
+#### build-info.yaml
 
 As a third alternative, you may specify build-info in YAML format. A new project created with `munkipkg --create --yaml Foo` would have this build-info.yaml file:
 
@@ -130,7 +130,7 @@ version: '1.0'
 
 If both build-info.plist and build-info.yaml are present, the plist file will be used; the yaml file will be ignored.
 
-####build-info keys
+#### build-info keys
 
 **distribution_style**  
 Boolean: true or false. Defaults to false. If present and true, package built will be a "distribution-style" package.
@@ -171,7 +171,7 @@ The value of this key is referenced in the default package name using `${version
 Dictionary of signing options. See below.
 
 
-###Payload-free packages
+### Payload-free packages
 
 You can use this tool to build payload-free packages in two variants.
 
@@ -180,7 +180,7 @@ If there is no payload folder at all, `pkgbuild` is called with the `--nopayload
 If the payload folder exists, but is empty, you'll get a "pseudo-payload-free" package. No files will be installed, but a receipt will be left. This is often the more useful option if you need to track if the package has been installed on machines you manage.
 
 
-###Package signing
+### Package signing
 
 You may sign packages as part of the build process by adding a signing\_info dictionary to the build\_info.plist:
 
@@ -218,12 +218,12 @@ The only required key/value in the signing_info dictionary is 'identity'.
 See the **SIGNED PACKAGES** section of the man page for `pkgbuild` or the **SIGNED PRODUCT ARCHIVES** section of the man page for `productbuild` for more information on the signing options.
 
 
-###Scripts
+### Scripts
 
 munkipkg makes use of `pkgbuild`. Therefore the "main" scripts must be named either "preinstall" or "postinstall" (with no extensions) and must have their execute bit set. Other scripts can be called by the preinstall or postinstall scripts, but only those two scripts will be automatically called during package installation.
 
 
-###Additional options
+### Additional options
 
 `--create`  
 Creates a new empty template package project. See [**Creating a new project**](#creating-a-new-project).
@@ -246,7 +246,7 @@ Causes munkipkg to suppress normal output messages. Errors will still be printed
 Prints help message and tool version, respectively.
 
 
-##Important git notes
+## Important git notes
 
 Git was designed to track source code. Its focus is tracking changes in the contents of files. It's not a perfect fit for tracking the parts making up a package. Specifically, git doesn't track owner or group of files or directories, and does not track any mode bits except for the execute bit for the owner. Git also does not track empty directories.
 

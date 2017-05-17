@@ -360,9 +360,9 @@ def sync_from_bom_info(project_dir, options):
                         'properly preserve extended attributes.'
                         % (path, otherfile))
                     continue
-                if os.path.exists(payload_path):
+                if os.path.lexists(payload_path):
                     # file exists, check permission bits and adjust if needed
-                    current_mode = stat.S_IMODE(os.stat(payload_path).st_mode)
+                    current_mode = stat.S_IMODE(os.lstat(payload_path).st_mode)
                     if current_mode != desired_mode:
                         display("Changing mode of %s to %s"
                                 % (payload_path, oct(desired_mode)),
@@ -385,8 +385,8 @@ def sync_from_bom_info(project_dir, options):
                     break
                 if running_as_root:
                     # we can sync owner and group as well
-                    current_user = os.stat(payload_path).st_uid
-                    current_group = os.stat(payload_path).st_gid
+                    current_user = os.lstat(payload_path).st_uid
+                    current_group = os.lstat(payload_path).st_gid
                     if (current_user != desired_user or
                             current_group != desired_group):
                         display("Changing user/group of %s to %s/%s"

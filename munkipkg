@@ -603,6 +603,11 @@ def build_distribution_pkg(build_info, options):
         build_info['project_dir'], REQUIREMENTS_PLIST)
     if os.path.exists(requirements_plist):
         cmd.extend(['--product', requirements_plist])
+    # if build_info contains a product id use that for product id, otherwise
+    # use package identifier
+    product_id = build_info.get('product id', build_info['identifier'])
+    cmd.extend(['--identifier', product_id, '--version', build_info['version']])
+    # add the input and output package paths
     cmd.extend(['--package', pkginputname, distoutputname])
 
     retcode = subprocess.call(cmd)

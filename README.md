@@ -159,6 +159,9 @@ String. One of "recommended", "preserve", or "preserve-other". Defaults to "reco
 **postinstall_action**  
 String. One of "none", "logout", or "restart". Defaults to "none".
 
+**product id**
+Optional. String. Sets the value of the "product id" attribute in a distribution-style package's Distribution file. If this is not defined, the value for `identifier` (the package identifier) will be used instead.
+
 **suppress\_bundle\_relocation**  
 Boolean: true or false. Defaults to true. If present and false, bundle relocation will be allowed, which causes the Installer to update bundles found in locations other than their default location. For deploying software in a managed environment, this is rarely what you want.
 

@@ -97,6 +97,7 @@ def validate_build_info_keys(build_info, file_path):
         'postinstall_action': ['none', 'logout', 'restart'],
         'suppress_bundle_relocation': [True, False],
         'distribution_style': [True, False],
+        'preserve_xattr': [True, False],
     }
     for key in valid_values:
         if key in build_info:
@@ -204,9 +205,12 @@ def make_pkginfo(build_info, options):
         display("Setting postinstall-action to %s"
                 % build_info['postinstall_action'], options.quiet)
     pkginfo_path = os.path.join(build_info['tmpdir'], 'PackageInfo')
-    pkginfo_text = ('<?xml version="1.0" encoding="utf-8" standalone="no"?>'
-                    '<pkg-info postinstall-action="%s"/>'
-                    % build_info['postinstall_action'])
+    pkginfo_text = (
+        '<?xml version="1.0" encoding="utf-8" standalone="no"?>'
+        '<pkg-info postinstall-action="%s" preserve-xattr="%s"/>'
+        % (build_info['postinstall_action'], 
+           str(build_info['preserve_xattr']).lower())
+    )
     try:
         fileobj = open(pkginfo_path, mode='w')
         fileobj.write(pkginfo_text)
@@ -222,6 +226,7 @@ def default_build_info(project_dir):
     info['ownership'] = "recommended"
     info['suppress_bundle_relocation'] = True
     info['postinstall_action'] = 'none'
+    info['preserve_xattr'] = False
     basename = os.path.basename(project_dir.rstrip('/')).replace(" ", "")
     info['name'] = basename + '-${version}.pkg'
     info['identifier'] = "com.github.munki.pkg." + basename
@@ -238,7 +243,7 @@ def get_build_info(project_dir, options):
     # override default values with values from BUILD_INFO_PLIST
     supported_keys = ['name', 'identifier', 'version', 'ownership',
                       'install_location', 'postinstall_action',
-                      'suppress_bundle_relocation',
+                      'preserve_xattr', 'suppress_bundle_relocation',
                       'distribution_style', 'signing_info']
     build_file = os.path.join(project_dir, BUILD_INFO_FILE)
     file_type = None
@@ -739,6 +744,8 @@ def convert_packageinfo(pkg_path, project_dir, options):
         pkginfo, 'install-location') or '/'
     build_info['postinstall_action'] = get_pkginfo_attr(
         pkginfo, 'postinstall-action') or 'none'
+    build_info['preserve_xattr'] = get_pkginfo_attr(
+        pkginfo, 'preserve-xattr') == "true"
     build_info['name'] = os.path.basename(pkg_path)
     if non_recommended_permissions_in_bom(project_dir):
         build_info['ownership'] = 'preserve'

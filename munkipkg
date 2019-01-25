@@ -91,7 +91,7 @@ def display(message, quiet=False):
 
 
 def validate_build_info_keys(build_info, file_path):
-    '''Validates the data read from build_info.(plist|json|yaml)'''
+    '''Validates the data read from build_info.(plist|json|yaml|yml)'''
     valid_values = {
         'ownership': ['recommended', 'preserve', 'preserve-other'],
         'postinstall_action': ['none', 'logout', 'restart'],
@@ -117,7 +117,7 @@ def read_build_info(path):
         if path.endswith('.json'):
             with open(path, 'r') as openfile:
                 build_info = json.load(openfile)
-        elif path.endswith('.yaml'):
+        elif path.endswith(('.yaml', '.yml')):
             with open(path, 'r') as openfile:
                 build_info = yaml.load(openfile)
         elif path.endswith('.plist'):
@@ -219,7 +219,7 @@ def get_build_info(project_dir, options):
     build_file = os.path.join(project_dir, BUILD_INFO_FILE)
     file_type = None
     if not options.yaml and not options.json:
-        file_types = ['plist', 'json', 'yaml']
+        file_types = ['plist', 'json', 'yaml', 'yml']
         for ext in file_types:
             if os.path.exists(build_file + '.' + ext):
                 if file_type is None:

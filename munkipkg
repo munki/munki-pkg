@@ -7,7 +7,7 @@ A tool for making packages from projects that can be easily managed in a
 version control system like git.
 
 """
-# Copyright 2015 Greg Neagle.
+# Copyright 2015-2019 Greg Neagle.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ except ImportError:
 from xml.dom import minidom
 from xml.parsers.expat import ExpatError
 
-VERSION = "0.5"
+VERSION = "0.6"
 DITTO = "/usr/bin/ditto"
 LSBOM = "/usr/bin/lsbom"
 PKGBUILD = "/usr/bin/pkgbuild"
@@ -91,7 +91,7 @@ def display(message, quiet=False):
 
 
 def validate_build_info_keys(build_info, file_path):
-    '''Validates the data read from build_info.(plist|json|yaml)'''
+    '''Validates the data read from build_info.(plist|json|yaml|yml)'''
     valid_values = {
         'ownership': ['recommended', 'preserve', 'preserve-other'],
         'postinstall_action': ['none', 'logout', 'restart'],
@@ -110,57 +110,28 @@ def validate_build_info_keys(build_info, file_path):
                 return None
 
 
-def read_build_info_plist(plist_path):
-    '''Reads and validates data in the build_info plist'''
+def read_build_info(path):
+    '''Reads and validates data in the build_info'''
     build_info = None
     try:
-        build_info = plistlib.readPlist(plist_path)
-    except ExpatError, err:
+        if path.endswith('.json'):
+            with open(path, 'r') as openfile:
+                build_info = json.load(openfile)
+        elif path.endswith(('.yaml', '.yml')):
+            with open(path, 'r') as openfile:
+                build_info = yaml.load(openfile)
+        elif path.endswith('.plist'):
+            build_info = plistlib.readPlist(path)
+    except (ExpatError, ValueError, yaml.scanner.ScannerError) as err:
         raise BuildError(
-            "%s is not a valid xml plist: %s" % (plist_path, str(err)))
-    validate_build_info_keys(build_info, plist_path)
+            "%s is not a valid %s file: %s" % (path, path.split('.')[-1], str(err)))
+    validate_build_info_keys(build_info, path)
     if '${version}' in build_info['name']:
         build_info['name'] = build_info['name'].replace(
             '${version}',
             build_info['version']
         )
 
-    return build_info
-
-
-def read_build_info_json(json_path):
-    '''Reads and validates data in the build_info json file'''
-    build_info = None
-    try:
-        with open(json_path, 'r') as json_file:
-            build_info = json.load(json_file)
-    except ValueError, err:
-        raise BuildError(
-            "%s is not a valid json file: %s" % (json_path, str(err)))
-    validate_build_info_keys(build_info, json_path)
-    if '${version}' in build_info['name']:
-        build_info['name'] = build_info['name'].replace(
-            '${version}',
-            build_info['version']
-        )
-    return build_info
-
-
-def read_build_info_yaml(yaml_path):
-    '''Reads and validates data in the build_info yaml file'''
-    build_info = None
-    try:
-        with open(yaml_path, 'r') as yaml_file:
-            build_info = yaml.load(yaml_file)
-    except ValueError, err:
-        raise BuildError(
-            "%s is not a valid yaml file: %s" % (yaml_path, str(err)))
-    validate_build_info_keys(build_info, yaml_path)
-    if '${version}' in build_info['name']:
-        build_info['name'] = build_info['name'].replace(
-            '${version}',
-            build_info['version']
-        )
     return build_info
 
 
@@ -208,7 +179,7 @@ def make_pkginfo(build_info, options):
     pkginfo_text = (
         '<?xml version="1.0" encoding="utf-8" standalone="no"?>'
         '<pkg-info postinstall-action="%s" preserve-xattr="%s"/>'
-        % (build_info['postinstall_action'], 
+        % (build_info['postinstall_action'],
            str(build_info['preserve_xattr']).lower())
     )
     try:
@@ -248,7 +219,7 @@ def get_build_info(project_dir, options):
     build_file = os.path.join(project_dir, BUILD_INFO_FILE)
     file_type = None
     if not options.yaml and not options.json:
-        file_types = ['plist', 'json', 'yaml']
+        file_types = ['plist', 'json', 'yaml', 'yml']
         for ext in file_types:
             if os.path.exists(build_file + '.' + ext):
                 if file_type is None:
@@ -261,19 +232,15 @@ def get_build_info(project_dir, options):
             'yaml' if options.yaml else 'json' if options.json else 'plist')
 
     file_info = None
-    if file_type == 'json' and os.path.exists("%s.json" % build_file):
-        file_info = read_build_info_json("%s.json" % build_file)
-    elif file_type == 'yaml' and os.path.exists("%s.yaml" % build_file):
-        file_info = read_build_info_yaml("%s.yaml" % build_file)
-    elif os.path.exists("%s.plist" % build_file):
-        file_info = read_build_info_plist("%s.plist" % build_file)
+    if file_type and os.path.exists(build_file + '.' + file_type):
+        file_info = read_build_info(build_file + '.' + file_type)
 
     if file_info:
         for key in supported_keys:
             if key in file_info:
                 info[key] = file_info[key]
     else:
-        raise MunkiPkgError("ERROR: No build-info file found!")
+        raise MunkiPkgError('ERROR: No build-info file found!')
 
     return info
 

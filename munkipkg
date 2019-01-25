@@ -7,7 +7,7 @@ A tool for making packages from projects that can be easily managed in a
 version control system like git.
 
 """
-# Copyright 2015 Greg Neagle.
+# Copyright 2015-2019 Greg Neagle.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ except ImportError:
 from xml.dom import minidom
 from xml.parsers.expat import ExpatError
 
-VERSION = "0.5"
+VERSION = "0.6"
 DITTO = "/usr/bin/ditto"
 LSBOM = "/usr/bin/lsbom"
 PKGBUILD = "/usr/bin/pkgbuild"

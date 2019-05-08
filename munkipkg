@@ -78,7 +78,7 @@ def unlink_if_possible(pathname):
     '''Attempt to remove pathname but don't raise an execption if it fails'''
     try:
         os.unlink(pathname)
-    except OSError, err:
+    except OSError as err:
         print >> sys.stderr, (
             "WARNING: could not remove %s: %s" % (pathname, err))
 
@@ -87,7 +87,7 @@ def display(message, quiet=False):
     '''Print message to stdout unless quiet is True'''
     if not quiet:
         toolname = os.path.basename(sys.argv[0])
-        print "%s: %s" % (toolname, message)
+        print("%s: %s" % (toolname, message))
 
 
 def validate_build_info_keys(build_info, file_path):
@@ -145,7 +145,7 @@ def make_component_property_list(build_info, options):
     cmd.extend(["--analyze", "--root", build_info['payload'], component_plist])
     try:
         returncode = subprocess.call(cmd)
-    except OSError, err:
+    except OSError as err:
         raise BuildError(
             "pkgbuild execution failed with error code %d: %s"
             % (err.errno, err.strerror))
@@ -155,7 +155,7 @@ def make_component_property_list(build_info, options):
             % (returncode, " ".join(str(err).split())))
     try:
         plist = plistlib.readPlist(component_plist)
-    except ExpatError, err:
+    except ExpatError as err:
         raise BuildError("Couldn't read %s" % component_plist)
     # plist is an array of dicts, iterate through
     for bundle in plist:
@@ -165,7 +165,7 @@ def make_component_property_list(build_info, options):
                     % bundle['RootRelativeBundlePath'], options.quiet)
     try:
         plistlib.writePlist(plist, component_plist)
-    except BaseException, err:
+    except BaseException as err:
         raise BuildError("Couldn't write %s" % component_plist)
     return component_plist
 
@@ -187,7 +187,7 @@ def make_pkginfo(build_info, options):
         fileobj.write(pkginfo_text)
         fileobj.close()
         return pkginfo_path
-    except (OSError, IOError), err:
+    except (OSError, IOError) as err:
         raise BuildError('Couldn\'t create PackageInfo file: %s' % err)
 
 
@@ -266,7 +266,7 @@ def non_recommended_permissions_in_bom(project_dir):
                 if user_group != '0/0':
                     return True
         return False
-    except (OSError, ValueError), err:
+    except (OSError, ValueError) as err:
         print >> sys.stderr, 'ERROR: %s' % err
         return False
 
@@ -367,7 +367,7 @@ def sync_from_bom_info(project_dir, options):
                         os.lchown(payload_path, desired_user, desired_group)
                         changes_made += 1
 
-    except (OSError, ValueError), err:
+    except (OSError, ValueError) as err:
         print >> sys.stderr, 'ERROR: %s' % err
         return -1
 
@@ -431,7 +431,7 @@ def write_build_info(build_info, project_dir, options):
             build_info_plist = os.path.join(
                 project_dir, "%s.plist" % BUILD_INFO_FILE)
             plistlib.writePlist(build_info, build_info_plist)
-    except OSError, err:
+    except OSError as err:
         raise MunkiPkgError(err)
 
 
@@ -466,7 +466,7 @@ def create_template_project(project_dir, options):
         create_default_gitignore(project_dir)
         display(
             "Created new package project at %s" % project_dir, options.quiet)
-    except (OSError, MunkiPkgError), err:
+    except (OSError, MunkiPkgError) as err:
         print >> sys.stderr, 'ERROR: %s' % err
         return -1
 
@@ -481,7 +481,7 @@ def export_bom(bomfile, project_dir):
             _, stderr = proc.communicate()
             if proc.returncode:
                 raise MunkiPkgError(stderr)
-    except OSError, err:
+    except OSError as err:
         raise MunkiPkgError(err)
 
 
@@ -591,7 +591,7 @@ def build_distribution_pkg(build_info, options):
         display("Renaming distribution package %s to %s"
                 % (distoutputname, pkginputname), options.quiet)
         os.rename(distoutputname, pkginputname)
-    except OSError, err:
+    except OSError as err:
         raise BuildError(err)
 
 
@@ -602,7 +602,7 @@ def build(project_dir, options):
     try:
         try:
             build_info = get_build_info(project_dir, options)
-        except MunkiPkgError, err:
+        except MunkiPkgError as err:
             print >> sys.stderr, str(err)
             exit(-1)
 
@@ -661,7 +661,7 @@ def build(project_dir, options):
         _ = subprocess.call(["/bin/rm", "-rf", build_info['tmpdir']])
         return 0
 
-    except BuildError, err:
+    except BuildError as err:
         print >> sys.stderr, 'ERROR: %s' % err
         if build_info.get('tmpdir'):
             # cleanup temp dir
@@ -689,7 +689,7 @@ def expand_payload(project_dir):
         try:
             os.rename(payload_file, payload_archive)
             os.mkdir(payload_dir)
-        except OSError, err:
+        except OSError as err:
             raise PkgImportError(err)
         cmd = [DITTO, '-x', payload_archive, payload_dir]
         retcode = subprocess.call(cmd)
@@ -767,7 +767,7 @@ def handle_distribution_pkg(project_dir):
                 dest_path = os.path.join(project_dir, item)
                 try:
                     os.rename(source_path, dest_path)
-                except OSError, err:
+                except OSError as err:
                     raise PkgImportError(err)
         try:
             os.rmdir(pkg)
@@ -852,7 +852,7 @@ def import_bundle_pkg(pkg_path, project_dir, options):
         payload_dir = os.path.join(project_dir, 'payload')
         try:
             os.mkdir(payload_dir)
-        except OSError, err:
+        except OSError as err:
             raise PkgImportError(err)
         cmd = [DITTO, '-x', archive, payload_dir]
         retcode = subprocess.call(cmd)
@@ -874,7 +874,7 @@ def import_bundle_pkg(pkg_path, project_dir, options):
         display("Created new package project at %s"
                 % project_dir, options.quiet)
         return 0
-    except(MunkiPkgError, OSError), err:
+    except(MunkiPkgError, OSError) as err:
         print >> sys.stderr, 'ERROR: %s' % err
         return -1
 
@@ -916,7 +916,7 @@ def import_flat_pkg(pkg_path, project_dir, options):
         display("Created new package project at %s"
                 % project_dir, options.quiet)
         return 0
-    except(MunkiPkgError, OSError), err:
+    except(MunkiPkgError, OSError) as err:
         print >> sys.stderr, 'ERROR: %s' % err
         return -1
 

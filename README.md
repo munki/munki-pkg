@@ -104,6 +104,7 @@ Alternately, you may specify build-info in JSON format. A new project created wi
     "suppress_bundle_relocation": true,
     "name": "Foo-${version}.pkg",
     "distribution_style": false,
+    "preserve_xattr": false,
     "install_location": "/",
     "version": "1.0",
     "ownership": "recommended",
@@ -124,6 +125,7 @@ install_location: /
 name: Foo-${version}.pkg
 ownership: recommended
 postinstall_action: none
+preserve_xattr: false
 suppress_bundle_relocation: true
 version: '1.0'
 ```

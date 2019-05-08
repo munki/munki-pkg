@@ -119,7 +119,7 @@ def read_build_info(path):
                 build_info = json.load(openfile)
         elif path.endswith(('.yaml', '.yml')):
             with open(path, 'r') as openfile:
-                build_info = yaml.load(openfile)
+                build_info = yaml.load(openfile, Loader=yaml.FullLoader)
         elif path.endswith('.plist'):
             build_info = plistlib.readPlist(path)
     except (ExpatError, ValueError, yaml.scanner.ScannerError) as err:

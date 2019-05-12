@@ -76,6 +76,26 @@ class PkgImportError(MunkiPkgError):
     pass
 
 
+def readPlist(filepath):
+    '''Wrapper for the differences between Python 2 and Python 3's plistlib'''
+    try:
+        with open(filepath, "rb") as fileobj:
+            return plistlib.load(fileobj)
+    except AttributeError:
+        # plistlib module doesn't have a load function (as in Python 2)
+        return plistlib.readPlist(filepath)
+
+
+def writePlist(plist, filepath):
+    '''Wrapper for the differences between Python 2 and Python 3's plistlib'''
+    try:
+        with open(filepath, "wb") as fileobj:
+            plistlib.dump(plist, fileobj)
+    except AttributeError:
+        # plistlib module doesn't have a dump function (as in Python 2)
+        plistlib.writePlist(plist, filepath)
+
+
 def unlink_if_possible(pathname):
     '''Attempt to remove pathname but don't raise an execption if it fails'''
     try:
@@ -124,7 +144,7 @@ def read_build_info(path):
             with open(path, 'r') as openfile:
                 build_info = yaml.load(openfile, Loader=yaml.FullLoader)
         elif path.endswith('.plist'):
-            build_info = plistlib.readPlist(path)
+            build_info = readPlist(path)
     except (ExpatError, ValueError, yaml.scanner.ScannerError) as err:
         raise BuildError("%s is not a valid %s file: %s"
                          % (path, path.split('.')[-1], str(err)))
@@ -157,7 +177,7 @@ def make_component_property_list(build_info, options):
             "pkgbuild failed with exit code %d: %s"
             % (returncode, " ".join(str(err).split())))
     try:
-        plist = plistlib.readPlist(component_plist)
+        plist = readPlist(component_plist)
     except ExpatError as err:
         raise BuildError("Couldn't read %s" % component_plist)
     # plist is an array of dicts, iterate through
@@ -167,7 +187,7 @@ def make_component_property_list(build_info, options):
             display('Turning off bundle relocation for %s'
                     % bundle['RootRelativeBundlePath'], options.quiet)
     try:
-        plistlib.writePlist(plist, component_plist)
+        writePlist(plist, component_plist)
     except BaseException as err:
         raise BuildError("Couldn't write %s" % component_plist)
     return component_plist
@@ -433,7 +453,7 @@ def write_build_info(build_info, project_dir, options):
         else:
             build_info_plist = os.path.join(
                 project_dir, "%s.plist" % BUILD_INFO_FILE)
-            plistlib.writePlist(build_info, build_info_plist)
+            writePlist(build_info, build_info_plist)
     except OSError as err:
         raise MunkiPkgError(err)
 
@@ -731,7 +751,7 @@ def convert_packageinfo(pkg_path, project_dir, options):
 def convert_info_plist(pkg_path, project_dir, options):
     '''Read bundle pkg Info.plist and create build-info file'''
     info_plist = os.path.join(pkg_path, 'Contents/Info.plist')
-    info = plistlib.readPlist(info_plist)
+    info = readPlist(info_plist)
     build_info = {}
 
     build_info['identifier'] = info.get('CFBundleIdentifier', '')

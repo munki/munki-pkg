@@ -21,6 +21,8 @@ version control system like git.
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import absolute_import, print_function
+
 import glob
 import json
 import optparse
@@ -34,9 +36,9 @@ import tempfile
 
 try:
     import yaml
-    yaml_installed = True
+    YAML_INSTALLED = True
 except ImportError:
-    yaml_installed = False
+    YAML_INSTALLED = False
 
 from xml.dom import minidom
 from xml.parsers.expat import ExpatError
@@ -79,15 +81,15 @@ def unlink_if_possible(pathname):
     try:
         os.unlink(pathname)
     except OSError as err:
-        print >> sys.stderr, (
-            "WARNING: could not remove %s: %s" % (pathname, err))
+        print("WARNING: could not remove %s: %s" % (pathname, err),
+              file=sys.stderr)
 
 
 def display(message, quiet=False):
     '''Print message to stdout unless quiet is True'''
     if not quiet:
         toolname = os.path.basename(sys.argv[0])
-        print("%s: %s" % (toolname, message))
+        print(("%s: %s" % (toolname, message)))
 
 
 def validate_build_info_keys(build_info, file_path):
@@ -102,12 +104,13 @@ def validate_build_info_keys(build_info, file_path):
     for key in valid_values:
         if key in build_info:
             if build_info[key] not in valid_values[key]:
-                print >> sys.stderr, (
-                    "ERROR: %s key '%s' has illegal value: %s"
-                    % (file_path, key, repr(build_info[key])))
-                print >> sys.stderr, (
-                    'ERROR: Legal values are: %s' % valid_values[key])
-                return None
+                print("ERROR: %s key '%s' has illegal value: %s"
+                      % (file_path, key, repr(build_info[key])),
+                      file=sys.stderr)
+                print('ERROR: Legal values are: %s' % valid_values[key],
+                      file=sys.stderr)
+                return False
+    return True
 
 
 def read_build_info(path):
@@ -123,8 +126,8 @@ def read_build_info(path):
         elif path.endswith('.plist'):
             build_info = plistlib.readPlist(path)
     except (ExpatError, ValueError, yaml.scanner.ScannerError) as err:
-        raise BuildError(
-            "%s is not a valid %s file: %s" % (path, path.split('.')[-1], str(err)))
+        raise BuildError("%s is not a valid %s file: %s"
+                         % (path, path.split('.')[-1], str(err)))
     validate_build_info_keys(build_info, path)
     if '${version}' in build_info['name']:
         build_info['name'] = build_info['name'].replace(
@@ -267,7 +270,7 @@ def non_recommended_permissions_in_bom(project_dir):
                     return True
         return False
     except (OSError, ValueError) as err:
-        print >> sys.stderr, 'ERROR: %s' % err
+        print('ERROR: %s' % err, file=sys.stderr)
         return False
 
 
@@ -290,15 +293,15 @@ def sync_from_bom_info(project_dir, options):
         build_info = default_build_info(project_dir)
     running_as_root = (os.geteuid() == 0)
     if not os.path.exists(bom_list_file):
-        print >> sys.stderr, (
+        print((
             "ERROR: Can't sync with bom info: no %s found in project directory."
-            % BOM_TEXT_FILE)
+            % BOM_TEXT_FILE), file=sys.stderr)
         return -1
     if build_info['ownership'] != 'recommended' and not running_as_root:
-        print >> sys.stderr, (
+        print((
             "\nWARNING: build-info ownership: %s might require using "
             "sudo to properly sync owner and group for payload files.\n"
-            % build_info['ownership'])
+            % build_info['ownership']), file=sys.stderr)
 
     returncode = 0
     changes_made = 0
@@ -326,11 +329,11 @@ def sync_from_bom_info(project_dir, options):
                 if basename.startswith('._'):
                     otherfile = os.path.join(
                         os.path.dirname(path), basename[2:])
-                    print >> sys.stderr, (
+                    print((
                         'WARNING: file %s contains extended attributes or a '
                         'resource fork for %s. git and pkgbuild may not '
                         'properly preserve extended attributes.'
-                        % (path, otherfile))
+                        % (path, otherfile)), file=sys.stderr)
                     continue
                 if os.path.lexists(payload_path):
                     # file exists, check permission bits and adjust if needed
@@ -351,8 +354,8 @@ def sync_from_bom_info(project_dir, options):
                     continue
                 else:
                     # missing file. This is a problem.
-                    print >> sys.stderr, (
-                        "ERROR: File %s is missing in payload" % payload_path)
+                    print("ERROR: File %s is missing in payload"
+                          % payload_path, file=sys.stderr)
                     returncode = -1
                     break
                 if running_as_root:
@@ -368,7 +371,7 @@ def sync_from_bom_info(project_dir, options):
                         changes_made += 1
 
     except (OSError, ValueError) as err:
-        print >> sys.stderr, 'ERROR: %s' % err
+        print('ERROR: %s' % err, file=sys.stderr)
         return -1
 
     if returncode == 0 and not options.quiet:
@@ -447,10 +450,10 @@ def create_template_project(project_dir, options):
     '''Create an empty pkg project directory with default settings'''
     if os.path.exists(project_dir):
         if not options.force:
-            print >> sys.stderr, (
+            print((
                 "ERROR: %s already exists! "
                 "Use --force to convert it to a project directory."
-                % project_dir)
+                % project_dir), file=sys.stderr)
             return -1
     payload_dir = os.path.join(project_dir, 'payload')
     scripts_dir = os.path.join(project_dir, 'scripts')
@@ -467,8 +470,9 @@ def create_template_project(project_dir, options):
         display(
             "Created new package project at %s" % project_dir, options.quiet)
     except (OSError, MunkiPkgError) as err:
-        print >> sys.stderr, 'ERROR: %s' % err
+        print('ERROR: %s' % err, file=sys.stderr)
         return -1
+    return 0
 
 
 def export_bom(bomfile, project_dir):
@@ -603,14 +607,14 @@ def build(project_dir, options):
         try:
             build_info = get_build_info(project_dir, options)
         except MunkiPkgError as err:
-            print >> sys.stderr, str(err)
+            print(str(err), file=sys.stderr)
             exit(-1)
 
         if build_info['ownership'] in ['preserve', 'preserve-other']:
             if os.geteuid() != 0:
-                print >> sys.stderr, (
-                    "\nWARNING: build-info ownership: %s might require using "
-                    "sudo to build this package.\n" % build_info['ownership'])
+                print("\nWARNING: build-info ownership: %s might require "
+                      "using sudo to build this package.\n"
+                      % build_info['ownership'], file=sys.stderr)
 
         add_project_subdirs(build_info)
 
@@ -662,7 +666,7 @@ def build(project_dir, options):
         return 0
 
     except BuildError as err:
-        print >> sys.stderr, 'ERROR: %s' % err
+        print('ERROR: %s' % err, file=sys.stderr)
         if build_info.get('tmpdir'):
             # cleanup temp dir
             _ = subprocess.call(["/bin/rm", "-rf", build_info['tmpdir']])
@@ -826,9 +830,9 @@ def copy_bundle_pkg_scripts(pkg_path, project_dir, options):
                         % (found_scripts[0], supported_name), options.quiet)
                 os.rename(current_script_path, new_script_path)
             elif len(found_scripts) > 1:
-                print >> sys.stderr, (
-                    "WARNING: Multiple %sXXXXXX scripts found. "
-                    "Flat packages support only '%sinstall'." % (kind, kind))
+                print("WARNING: Multiple %sXXXXXX scripts found. "
+                      "Flat packages support only '%sinstall'." % (kind, kind),
+                      file=sys.stderr)
 
 
 def import_bundle_pkg(pkg_path, project_dir, options):
@@ -863,19 +867,20 @@ def import_bundle_pkg(pkg_path, project_dir, options):
         convert_info_plist(pkg_path, project_dir, options)
         if (non_recommended_permissions_in_bom(project_dir) and
                 os.geteuid() != 0):
-            print >> sys.stderr, (
+            print(
                 '\nWARNING: package contains non-default owner/group on some '
                 'files. build-info ownership has been set to "preserve". '
                 '\nCheck the bom for accuracy.'
                 '\nRun munkipkg --sync with sudo to apply the correct owner '
-                'and group to payload files.\n')
+                'and group to payload files.\n', file=sys.stderr
+            )
         sync_from_bom_info(project_dir, options)
         create_default_gitignore(project_dir)
         display("Created new package project at %s"
                 % project_dir, options.quiet)
         return 0
     except(MunkiPkgError, OSError) as err:
-        print >> sys.stderr, 'ERROR: %s' % err
+        print('ERROR: %s' % err, file=sys.stderr)
         return -1
 
 
@@ -905,19 +910,20 @@ def import_flat_pkg(pkg_path, project_dir, options):
         convert_packageinfo(pkg_path, project_dir, options)
         if (non_recommended_permissions_in_bom(project_dir) and
                 os.geteuid() != 0):
-            print >> sys.stderr, (
+            print(
                 '\nWARNING: package contains non-default owner/group on some '
                 'files. build-info ownership has been set to "preserve". '
                 '\nCheck the bom for accuracy.'
                 '\nRun munkipkg --sync with sudo to apply the correct owner '
-                'and group to payload files.\n')
+                'and group to payload files.\n', file=sys.stderr
+            )
         sync_from_bom_info(project_dir, options)
         create_default_gitignore(project_dir)
         display("Created new package project at %s"
                 % project_dir, options.quiet)
         return 0
     except(MunkiPkgError, OSError) as err:
-        print >> sys.stderr, 'ERROR: %s' % err
+        print('ERROR: %s' % err, file=sys.stderr)
         return -1
 
 
@@ -925,23 +931,22 @@ def import_pkg(pkg_path, project_dir, options):
     '''Imports an existing pkg into a project directory. Returns a
     boolean to indicate success or failure.'''
     if os.path.exists(project_dir):
-        print >> sys.stderr, (
-            "ERROR: Directory %s already exists." % project_dir)
+        print("ERROR: Directory %s already exists." % project_dir,
+              file=sys.stderr)
         return False
 
     if os.path.isdir(pkg_path):
         return import_bundle_pkg(pkg_path, project_dir, options)
-    else:
-        return import_flat_pkg(pkg_path, project_dir, options)
+    return import_flat_pkg(pkg_path, project_dir, options)
 
 
 def valid_project_dir(project_dir):
     '''validate project dir. Returns a boolean'''
     if not os.path.exists(project_dir):
-        print >> sys.stderr, ("ERROR: %s: Project not found." % project_dir)
+        print(("ERROR: %s: Project not found." % project_dir), file=sys.stderr)
         return False
     elif not os.path.isdir(project_dir):
-        print >> sys.stderr, ("ERROR: %s is not a directory." % project_dir)
+        print(("ERROR: %s is not a directory." % project_dir), file=sys.stderr)
         return False
     return True
 
@@ -982,25 +987,26 @@ def main():
                            'exists. ')
     options, arguments = parser.parse_args()
 
-    if len(arguments) == 0:
+    if not arguments:
         parser.print_usage()
         sys.exit(0)
 
     if len(arguments) > 1:
-        print >> sys.stderr, (
-            "ERROR: Only a single package project can be built at a time!")
+        print("ERROR: Only a single package project can be built at a time!",
+              file=sys.stderr)
         sys.exit(-1)
 
     if options.json and options.yaml:
-        print >> sys.stderr, (
-            "ERROR: Only a single build-info file can be built at a time!")
+        print("ERROR: Only a single build-info file can be built at a time!",
+              file=sys.stderr)
         sys.exit(-1)
 
-    if options.yaml and not yaml_installed:
-        print >> sys.stderr, (
-            "ERROR: PyYAML missing. Please run 'sudo easy_install pip' " \
-            "followed by 'sudo pip install -r requirements.txt'"
-            )
+    if options.yaml and not YAML_INSTALLED:
+        print(
+            "ERROR: PyYAML missing. Please run 'sudo easy_install pip' "
+            "followed by 'sudo pip install -r requirements.txt'",
+            file=sys.stderr
+        )
         sys.exit(-1)
 
     if options.create:

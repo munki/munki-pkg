@@ -121,6 +121,22 @@ def display(message, quiet=False):
         print(("%s: %s" % (toolname, message)))
 
 
+def run_subprocess(cmd):
+    '''Runs cmd with Popen'''
+    proc = subprocess.Popen(
+        cmd,
+        shell=False,
+        bufsize=1,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    proc_stdout, proc_stderr = proc.communicate()
+    retcode = proc.returncode
+    return (retcode, proc_stdout, proc_stderr)
+
+
 def validate_build_info_keys(build_info, file_path):
     '''Validates the data read from build_info.(plist|json|yaml|yml)'''
     valid_values = {

@@ -33,6 +33,8 @@ import stat
 import subprocess
 import sys
 import tempfile
+from xml.dom import minidom
+from xml.parsers.expat import ExpatError
 
 try:
     import yaml
@@ -41,8 +43,6 @@ try:
 except ImportError:
     YAML_INSTALLED = False
 
-from xml.dom import minidom
-from xml.parsers.expat import ExpatError
 
 VERSION = "0.6"
 DITTO = "/usr/bin/ditto"

@@ -182,6 +182,9 @@ The value of this key is referenced in the default package name using `${version
 **signing_info**  
 Dictionary of signing options. See below.
 
+**notarization_info**  
+Dictionary of notarization options. See below.
+
 
 ### Build directory
 
@@ -254,6 +257,65 @@ or, in JSON format in a build-info.json file:
 The only required key/value in the signing_info dictionary is 'identity'.
 
 See the **SIGNED PACKAGES** section of the man page for `pkgbuild` or the **SIGNED PRODUCT ARCHIVES** section of the man page for `productbuild` for more information on the signing options.
+
+
+### Package notarization
+
+**Important notes**:
+
+- Please read the [Customizing the Notarization Workflow](https://developer.apple.com/documentation/security/notarizing_your_app_before_distribution/customizing_the_notarization_workflow) web page before you start notarizing your packages.
+- Xcode 10 (or newer) is **required**.  If you have more than one version of Xcode installed on your Mac, be sure to use the xcode-select utility to choose the appropriate version: `sudo xcode-select -s /path/to/Xcode10.app`.
+- Unproxied network access to the Apple infrastructure (Usually `17.0.0.0/8` network) is required.
+- Notarization tool tries to notarize not only the package but also the package payload. All code in the payload (including but not limited to app bundles, frameworks, kernel extensions) needs to be properly signed with the hardened runtime restrictions in order to be notarized. Please read Apple Developer documentation for more information.
+
+You may notarize **SIGNED PACKAGES** as part of the build process by adding a `notarization_info` dictionary to the build\_info.plist:
+
+```plist
+    <key>notarization_info</key>
+    <dict>
+        <key>username</key>
+        <string>john.appleseed@apple.com</string>
+        <key>password</key>
+        <string>@keychain:AC_PASSWORD</string>
+        <key>stapler_timeout</key>
+        <integer>120</integer>
+    </dict>
+```
+
+or, in JSON format in a build-info.json file:
+
+```json
+    "notarization_info": {
+        "username": "john.appleseed@apple.com",
+        "password": "@keychain:AC_PASSWORD",
+        "stapler_timeout":  120
+    }
+```
+
+Keys/values of the `notarization_info` dictionary:
+
+| Key               | Type    | Required | Description |
+| ----------------- | ------- | -------- | ----------- |
+| username          | String  | Yes      | Login email address of your developer Apple ID |
+| password          | String  | Yes      | 2FA app specific password. For information about the password and saving it to the login keychain see the web page [Customizing the Notarization Workflow](https://developer.apple.com/documentation/security/notarizing_your_app_before_distribution/customizing_the_notarization_workflow) |
+| stapler_timeout   | Integer | No       | See paragraph bellow |
+
+**About accessing password in keychain**
+
+If you configure `munki-pkg` to use the password from the login keychain user is going to be prompted to allow access to the password.
+You can authorize this once clicking *Allow* or permanently clicking *Always Allow*.
+
+**About stapling**
+
+`munki-pkg` basically runs two commands:
+
+```shell
+xcrun altool --notarize-app --primary-bundle-id "com.github.munki.pkg.munki-kickstart" --username "john.appleseed@apple.com" --password "@keychain:AC_PASSWORD" --file munki_kickstart.pkg
+xcrun stapler staple munki_kickstart.pkg
+```
+
+There is a time delay between successfull upload of a signed package to the notary service using `altool` and availability of the staple from the notary service `stapler` can use.
+`munki-pkg` will try to run `stapler` multiple times after sleeping for 15 seconds after each unsuccessul try. With `stapler_timeout` parameter you can specify timeout in seconds (default: 120) after which `munki-pkg` gives up.
 
 
 ### Additional options

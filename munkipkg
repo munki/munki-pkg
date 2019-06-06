@@ -33,6 +33,9 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
+from xml.dom import minidom
+from xml.parsers.expat import ExpatError
 
 try:
     import yaml
@@ -49,6 +52,7 @@ LSBOM = "/usr/bin/lsbom"
 PKGBUILD = "/usr/bin/pkgbuild"
 PKGUTIL = "/usr/sbin/pkgutil"
 PRODUCTBUILD = "/usr/bin/productbuild"
+XCRUN = "/usr/bin/xcrun"
 
 GITIGNORE_DEFAULT = """# .DS_Store files!
 .DS_Store
@@ -60,6 +64,10 @@ build/
 BUILD_INFO_FILE = "build-info"
 REQUIREMENTS_PLIST = "product-requirements.plist"
 BOM_TEXT_FILE = "Bom.txt"
+
+STAPLER_TIMEOUT = 120
+STAPLER_SLEEP = 15
+
 
 class MunkiPkgError(Exception):
     '''Base Exception for errors in this domain'''
@@ -262,10 +270,19 @@ def get_build_info(project_dir, options):
     info = default_build_info(project_dir)
     info['project_dir'] = project_dir
     # override default values with values from BUILD_INFO_PLIST
-    supported_keys = ['name', 'identifier', 'version', 'ownership',
-                      'install_location', 'postinstall_action',
-                      'preserve_xattr', 'suppress_bundle_relocation',
-                      'distribution_style', 'signing_info']
+    supported_keys = [
+        'name',
+        'identifier',
+        'version',
+        'ownership',
+        'install_location',
+        'postinstall_action',
+        'preserve_xattr',
+        'suppress_bundle_relocation',
+        'distribution_style',
+        'signing_info',
+        'notarization_info',
+    ]
     build_file = os.path.join(project_dir, BUILD_INFO_FILE)
     file_type = None
     if not options.yaml and not options.json:
@@ -650,6 +667,84 @@ def build_distribution_pkg(build_info, options):
         raise BuildError(err)
 
 
+def notarize(build_info, options):
+    '''Use xcrun altool to notarize our package'''
+    if not (
+        'username' in build_info['notarization_info']
+        and 'password' in build_info['notarization_info']
+    ):
+        raise MunkiPkgError("notarization_info lacks username or password.")
+
+    display("Uploading package to Apple notary service", options.quiet)
+    cmd = [
+        XCRUN,
+        'altool',
+        '--notarize-app',
+        '--primary-bundle-id',
+        build_info['identifier'],
+        '--username',
+        build_info['notarization_info']['username'],
+        '--password',
+        build_info['notarization_info']['password'],
+        '--output-format',
+        'xml',
+        '--file',
+        os.path.join(build_info['build_dir'], build_info['name']),
+    ]
+    retcode, proc_stdout, proc_stderr = run_subprocess(cmd)
+    output = readPlistFromString(proc_stdout)
+
+    if retcode:
+        for product_error in output['product-errors']:
+            print("altool: FAILURE " + product_error['message'], file=sys.stderr)
+        raise MunkiPkgError("Notarization failed")
+    else:
+        display(
+            "RequestUUID " + output['notarization-upload']['RequestUUID'],
+            options.quiet,
+            "altool",
+        )
+        display("SUCCESS " + output['success-message'], options.quiet, "altool")
+
+
+def staple(build_info, options):
+    '''Use xcrun staple to add staple to our package'''
+    display("Stapling package", options.quiet)
+    cmd = [
+        XCRUN,
+        'stapler',
+        'staple',
+        os.path.join(build_info['build_dir'], build_info['name']),
+    ]
+
+    if 'stapler_timeout' in build_info['notarization_info']:
+        timeout = build_info['notarization_info']['stapler_timeout']
+    else:
+        timeout = STAPLER_TIMEOUT
+
+    counter = 0
+    while counter < timeout:
+        retcode, proc_stdout, proc_stderr = run_subprocess(cmd)
+
+        # Stapler exited with code 0
+        if not retcode:
+            break
+        else:
+            display(
+                "Staple not yet available. Trying again in {} seconds".format(
+                    STAPLER_SLEEP
+                ),
+                options.quiet,
+            )
+        time.sleep(STAPLER_SLEEP)
+        counter += STAPLER_SLEEP
+
+    if retcode:
+        raise MunkiPkgError("Stapling failed")
+    else:
+        display("The staple and validate action worked!", options.quiet)
+
+
 def build(project_dir, options):
     '''Build our package'''
 
@@ -711,6 +806,14 @@ def build(project_dir, options):
         # convert pkg to distribution-style if requested
         if build_info['distribution_style']:
             build_distribution_pkg(build_info, options)
+
+        # notarize the pkg
+        if 'notarization_info' in build_info:
+            try:
+                notarize(build_info, options)
+                staple(build_info, options)
+            except MunkiPkgError as err:
+                print("ERROR: %s" % err, file=sys.stderr)
 
         # cleanup temp dir
         _ = subprocess.call(["/bin/rm", "-rf", build_info['tmpdir']])

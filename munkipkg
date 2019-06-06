@@ -33,6 +33,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+from six import string_types
 
 try:
     import yaml
@@ -541,7 +542,7 @@ def add_signing_options_to_cmd(cmd, build_info, options):
         if 'additional_cert_names' in signing_info:
             additional_cert_names = signing_info['additional_cert_names']
             # convert single string to list
-            if isinstance(additional_cert_names, basestring):
+            if isinstance(additional_cert_names, string_types):
                 additional_cert_names = [additional_cert_names]
             for cert_name in additional_cert_names:
                 cmd.extend(['--cert', cert_name])

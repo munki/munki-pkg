@@ -46,7 +46,7 @@ except ImportError:
 from xml.dom import minidom
 from xml.parsers.expat import ExpatError
 
-VERSION = "0.7"
+VERSION = "0.8"
 DITTO = "/usr/bin/ditto"
 LSBOM = "/usr/bin/lsbom"
 PKGBUILD = "/usr/bin/pkgbuild"

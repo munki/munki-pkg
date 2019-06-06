@@ -331,6 +331,12 @@ This option will import an existing package and convert it into a package projec
 `--export-bom-info`  
 This option causes munkipkg to export bom info from the built package to a file named "Bom.txt" in the root of the package project directory. Since git does not normally track ownership, group, or mode of tracked files, and since the "ownership" option to `pkgbuild` can also result in different owner and group of files included in the package payload, exporting this info into a text file allows you to track this metadata in git (or other version control) as well.
 
+`--skip-notarization`  
+Use this option to skip the whole notarization process when notarization is specified in the build-info.
+
+`--skip-stapling`  
+Use this option to skip only the stapling part of the notarization process when notarization is specified in the build-info.
+
 `--sync`  
 This option causes munkipkg to read the Bom.txt file, and use its information to create any missing empty directories and to set the permissions on files and directories. See [**Important git notes**](#important-git-notes) below.
 

@@ -808,10 +808,11 @@ def build(project_dir, options):
             build_distribution_pkg(build_info, options)
 
         # notarize the pkg
-        if 'notarization_info' in build_info:
+        if 'notarization_info' in build_info and not options.skip_notarization:
             try:
                 notarize(build_info, options)
-                staple(build_info, options)
+                if not options.skip_stapling:
+                    staple(build_info, options)
             except MunkiPkgError as err:
                 print("ERROR: %s" % err, file=sys.stderr)
 
@@ -1139,6 +1140,12 @@ def main():
     parser.add_option('-f', '--force', action='store_true',
                       help='Forces creation of project directory if it already '
                            'exists. ')
+    parser.add_option('--skip-notarization', action='store_true',
+                      help='Skips whole notarization process when '
+                           'notarization is specified in build-info')
+    parser.add_option('--skip-stapling', action='store_true',
+                      help='Skips only stapling part of notarization process '
+                           'when notarization is specified in build-info')
     options, arguments = parser.parse_args()
 
     if not arguments:

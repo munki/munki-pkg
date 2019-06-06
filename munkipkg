@@ -114,10 +114,11 @@ def unlink_if_possible(pathname):
               file=sys.stderr)
 
 
-def display(message, quiet=False):
+def display(message, quiet=False, toolname=None):
     '''Print message to stdout unless quiet is True'''
     if not quiet:
-        toolname = os.path.basename(sys.argv[0])
+        if not toolname:
+            toolname = os.path.basename(sys.argv[0])
         print(("%s: %s" % (toolname, message)))
 
 

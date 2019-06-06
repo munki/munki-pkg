@@ -76,6 +76,15 @@ class PkgImportError(MunkiPkgError):
     pass
 
 
+def readPlistFromString(data):
+    '''Wrapper for the differences between Python 2 and Python 3's plistlib'''
+    try:
+        return plistlib.load(data)
+    except AttributeError:
+        # plistlib module doesn't have a load function (as in Python 2)
+        return plistlib.readPlistFromString(data)
+
+
 def readPlist(filepath):
     '''Wrapper for the differences between Python 2 and Python 3's plistlib'''
     try:

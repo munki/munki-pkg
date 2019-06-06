@@ -1,7 +1,7 @@
 {
     "ownership": "recommended",
     "suppress_bundle_relocation": true,
-    "identifier": "com.github.munki.pkg.munki_kickstart",
+    "identifier": "com.github.munki.pkg.munki-kickstart",
     "postinstall_action": "none",
     "distribution_style": true,
     "version": "1.0",

@@ -33,7 +33,6 @@ import stat
 import subprocess
 import sys
 import tempfile
-from six import string_types
 
 try:
     import yaml
@@ -104,6 +103,16 @@ def unlink_if_possible(pathname):
     except OSError as err:
         print("WARNING: could not remove %s: %s" % (pathname, err),
               file=sys.stderr)
+
+
+def is_a_string(something):
+    '''Wrapper for basestring vs str'''
+    try:
+        # Python 2
+        return isinstance(something, basestring)
+    except NameError:
+        # Python 3
+        return isinstance(something, str)
 
 
 def display(message, quiet=False):
@@ -542,7 +551,7 @@ def add_signing_options_to_cmd(cmd, build_info, options):
         if 'additional_cert_names' in signing_info:
             additional_cert_names = signing_info['additional_cert_names']
             # convert single string to list
-            if isinstance(additional_cert_names, string_types):
+            if is_a_string(additional_cert_names):
                 additional_cert_names = [additional_cert_names]
             for cert_name in additional_cert_names:
                 cmd.extend(['--cert', cert_name])

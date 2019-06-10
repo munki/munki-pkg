@@ -696,7 +696,11 @@ def notarize(build_info, options):
             ['--asc-provider', build_info['notarization_info']['asc_provider']]
         )
     retcode, proc_stdout, proc_stderr = run_subprocess(cmd)
-    output = readPlistFromString(proc_stdout)
+    try:
+        output = readPlistFromString(proc_stdout)
+    except ExpatError:
+        print(proc_stderr, file=sys.stderr)
+        raise MunkiPkgError("Notarization failed. Unable to run xcrun altool")
 
     if retcode:
         for product_error in output['product-errors']:

@@ -691,6 +691,10 @@ def notarize(build_info, options):
         '--file',
         os.path.join(build_info['build_dir'], build_info['name']),
     ]
+    if 'asc_provider' in build_info['notarization_info']:
+        cmd.extend(
+            ['--asc-provider', build_info['notarization_info']['asc_provider']]
+        )
     retcode, proc_stdout, proc_stderr = run_subprocess(cmd)
     output = readPlistFromString(proc_stdout)
 

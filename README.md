@@ -277,6 +277,8 @@ You may notarize **SIGNED PACKAGES** as part of the build process by adding a `n
         <string>john.appleseed@apple.com</string>
         <key>password</key>
         <string>@keychain:AC_PASSWORD</string>
+        <key>asc_provider</key>
+        <string>JohnAppleseed1XXXXXX8</string>
         <key>stapler_timeout</key>
         <integer>120</integer>
     </dict>
@@ -288,6 +290,7 @@ or, in JSON format in a build-info.json file:
     "notarization_info": {
         "username": "john.appleseed@apple.com",
         "password": "@keychain:AC_PASSWORD",
+        "asc_provider": "JohnAppleseed1XXXXXX8",
         "stapler_timeout":  120
     }
 ```
@@ -298,6 +301,7 @@ Keys/values of the `notarization_info` dictionary:
 | ----------------- | ------- | -------- | ----------- |
 | username          | String  | Yes      | Login email address of your developer Apple ID |
 | password          | String  | Yes      | 2FA app specific password. For information about the password and saving it to the login keychain see the web page [Customizing the Notarization Workflow](https://developer.apple.com/documentation/security/notarizing_your_app_before_distribution/customizing_the_notarization_workflow) |
+| asc_provider      | String  | No       | Only needed when a user account is associated with multiple providers |
 | stapler_timeout   | Integer | No       | See paragraph bellow |
 
 **About accessing password in keychain**

@@ -681,7 +681,10 @@ def notarize(build_info, options):
         'altool',
         '--notarize-app',
         '--primary-bundle-id',
-        build_info['identifier'],
+        build_info['notarization_info'].get(
+            'primary_bundle_id',
+            build_info['identifier']
+        ),
         '--username',
         build_info['notarization_info']['username'],
         '--password',

@@ -134,48 +134,48 @@ If both build-info.plist and build-info.yaml are present, the plist file will be
 
 #### build-info keys
 
-**distribution_style**  
+**distribution_style**
 Boolean: true or false. Defaults to false. If present and true, package built will be a "distribution-style" package.
 
-**identifier**  
+**identifier**
 String containing the package identifier. If this is missing, one is constructed using the name of the package project directory.
 
-**install_location**  
+**install_location**
 String. Path to the intended install location of the payload on the target disk. Defaults to "/".
 
-**name**  
+**name**
 String containing the package name. If this is missing, one is constructed using the name of the package project directory.
 
 By default, the package name is suffixed with the version number using `${version}`. This suffix can be removed if desired, or it can be specified manually.
 
-JSON Example: 
+JSON Example:
 ```json
 "name": "munki_kickstart-${version}.pkg"
 "name": "munki_kickstart.pkg"
 "name": "munki_kickstart-1.0.pkg"
 ```
 
-**ownership**  
+**ownership**
 String. One of "recommended", "preserve", or "preserve-other". Defaults to "recommended". See the man page for `pkgbuild` for a description of the ownership options.
 
-**postinstall_action**  
+**postinstall_action**
 String. One of "none", "logout", or "restart". Defaults to "none".
 
 **preserve_xattr**
  Boolean: true or false. Defaults to false. Setting this to true would preserve extended attributes, like codesigned flat files (e.g. script files), amongst other xattr's such as the apple quarantine warning (com.apple.quarantine).
 
-**product id**  
+**product id**
 Optional. String. Sets the value of the "product id" attribute in a distribution-style package's Distribution file. If this is not defined, the value for `identifier` (the package identifier) will be used instead.
 
-**suppress\_bundle\_relocation**  
+**suppress\_bundle\_relocation**
 Boolean: true or false. Defaults to true. If present and false, bundle relocation will be allowed, which causes the Installer to update bundles found in locations other than their default location. For deploying software in a managed environment, this is rarely what you want.
 
-**version**  
+**version**
 A string representation of the version number. Defaults to "1.0".
 
 The value of this key is referenced in the default package name using `${version}`. (See the **name** key details above.)
 
-**signing_info**  
+**signing_info**
 Dictionary of signing options. See below.
 
 
@@ -233,24 +233,24 @@ munkipkg makes use of `pkgbuild`. Therefore the "main" scripts must be named eit
 
 ### Additional options
 
-`--create`  
+`--create`
 Creates a new empty template package project. See [**Creating a new project**](#creating-a-new-project).
 
-`--import`  
+`--import`
 `munkipkg --import /path/to/flat.pkg /path/to/project_dir`
 
 This option will import an existing package and convert it into a package project. project_dir must not exist; it will be created. build-info will be in plist format, add the --json option to output in JSON format instead. (IE: `munkipkg --json --import /path/to/flat.pkg /path/to/project_dir`) Not all package formats are supported.
 
-`--export-bom-info`  
+`--export-bom-info`
 This option causes munkipkg to export bom info from the built package to a file named "Bom.txt" in the root of the package project directory. Since git does not normally track ownership, group, or mode of tracked files, and since the "ownership" option to `pkgbuild` can also result in different owner and group of files included in the package payload, exporting this info into a text file allows you to track this metadata in git (or other version control) as well.
 
-`--sync`  
+`--sync`
 This option causes munkipkg to read the Bom.txt file, and use its information to create any missing empty directories and to set the permissions on files and directories. See [**Important git notes**](#important-git-notes) below.
 
-`--quiet`  
+`--quiet`
 Causes munkipkg to suppress normal output messages. Errors will still be printed to stderr.
 
-`--help`, `--version`  
+`--help`, `--version`
 Prints help message and tool version, respectively.
 
 

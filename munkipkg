@@ -703,16 +703,22 @@ def notarize(build_info, options):
         raise MunkiPkgError("Notarization failed. Unable to run xcrun altool")
 
     if retcode:
-        for product_error in output['product-errors']:
-            print("altool: FAILURE " + product_error['message'], file=sys.stderr)
+        for product_error in output.get('product-errors', []):
+            print(
+                "altool: FAILURE " + product_error.get('message', 'UNKNOWN ERROR'),
+                file=sys.stderr
+            )
         raise MunkiPkgError("Notarization failed")
-    else:
+
+    try:
         display(
             "RequestUUID " + output['notarization-upload']['RequestUUID'],
             options.quiet,
             "altool",
         )
         display("SUCCESS " + output['success-message'], options.quiet, "altool")
+    except KeyError:
+        raise MunkiPkgError("Unexpected output from altool")
 
 
 def staple(build_info, options):
@@ -725,10 +731,7 @@ def staple(build_info, options):
         os.path.join(build_info['build_dir'], build_info['name']),
     ]
 
-    if 'stapler_timeout' in build_info['notarization_info']:
-        timeout = build_info['notarization_info']['stapler_timeout']
-    else:
-        timeout = STAPLER_TIMEOUT
+    timeout = build_info['notarization_info'].get('stapler_timeout', STAPLER_TIMEOUT)
 
     counter = 0
     while counter < timeout:

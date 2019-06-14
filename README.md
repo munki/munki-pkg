@@ -279,8 +279,8 @@ You may notarize **SIGNED PACKAGES** as part of the build process by adding a `n
         <string>@keychain:AC_PASSWORD</string>
         <key>asc_provider</key>
         <string>JohnAppleseed1XXXXXX8</string>
-        <key>stapler_timeout</key>
-        <integer>120</integer>
+        <key>staple_timeout</key>
+        <integer>600</integer>
     </dict>
 ```
 
@@ -291,7 +291,7 @@ or, in JSON format in a build-info.json file:
         "username": "john.appleseed@apple.com",
         "password": "@keychain:AC_PASSWORD",
         "asc_provider": "JohnAppleseed1XXXXXX8",
-        "stapler_timeout":  120
+        "stapler_timeout": 600
     }
 ```
 
@@ -303,7 +303,7 @@ Keys/values of the `notarization_info` dictionary:
 | password          | String  | Yes      | 2FA app specific password. For information about the password and saving it to the login keychain see the web page [Customizing the Notarization Workflow](https://developer.apple.com/documentation/security/notarizing_your_app_before_distribution/customizing_the_notarization_workflow) |
 | asc_provider      | String  | No       | Only needed when a user account is associated with multiple providers |
 | primary_bundle_id | String  | No       | Defaults to `identifier`. `primary_bundle_id` is useful when `identifier` contains characters such as '_' Apple notary service does not like |
-| stapler_timeout   | Integer | No       | See paragraph bellow |
+| staple_timeout    | Integer | No       | See paragraph bellow |
 
 **About accessing password in keychain**
 
@@ -312,15 +312,15 @@ You can authorize this once clicking *Allow* or permanently clicking *Always All
 
 **About stapling**
 
-`munki-pkg` basically runs two commands:
+`munki-pkg` basically does following:
 
-```shell
-xcrun altool --notarize-app --primary-bundle-id "com.github.munki.pkg.munki-kickstart" --username "john.appleseed@apple.com" --password "@keychain:AC_PASSWORD" --file munki_kickstart.pkg
-xcrun stapler staple munki_kickstart.pkg
-```
+1. Uploads the package to Apple notary service using `xcrun altool --notarize-app --primary-bundle-id "com.github.munki.pkg.munki-kickstart" --username "john.appleseed@apple.com" --password "@keychain:AC_PASSWORD" --file munki_kickstart.pkg`
+2. Checks periodically state of notarization process using `xcrun altool --notarization-info <UUID> --username "john.appleseed@apple.com" --password "@keychain:AC_PASSWORD"`
+3. If notarization was successful `munki-pkg` staples the package using `xcrun stapler staple munki_kickstart.pkg`
 
-There is a time delay between successfull upload of a signed package to the notary service using `altool` and availability of the staple from the notary service `stapler` can use.
-`munki-pkg` will try to run `stapler` multiple times after sleeping for 15 seconds after each unsuccessul try. With `stapler_timeout` parameter you can specify timeout in seconds (default: 120) after which `munki-pkg` gives up.
+There is a time delay between successful upload of a signed package to the notary service and notarization result from the service.
+`munki-pkg` checks multiple times if notarization process is done. There is sleep period between each try. Sleep period starts at 5 seconds and increases by increments of 5 (5s, 10s, 10s, etc.).
+With `staple_timeout` parameter you can specify timeout in seconds (**default: 300 seconds**) after which `munki-pkg` gives up.
 
 
 ### Additional options

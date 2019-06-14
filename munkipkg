@@ -65,8 +65,8 @@ BUILD_INFO_FILE = "build-info"
 REQUIREMENTS_PLIST = "product-requirements.plist"
 BOM_TEXT_FILE = "Bom.txt"
 
-STAPLER_TIMEOUT = 120
-STAPLER_SLEEP = 15
+STAPLE_TIMEOUT = 300
+STAPLE_SLEEP = 5
 
 
 class MunkiPkgError(Exception):
@@ -667,8 +667,8 @@ def build_distribution_pkg(build_info, options):
         raise BuildError(err)
 
 
-def notarize(build_info, options):
-    '''Use xcrun altool to notarize our package'''
+def upload_to_notary(build_info, options):
+    '''Use xcrun altool to upload the package to Apple notary service'''
     if not (
         'username' in build_info['notarization_info']
         and 'password' in build_info['notarization_info']
@@ -682,8 +682,7 @@ def notarize(build_info, options):
         '--notarize-app',
         '--primary-bundle-id',
         build_info['notarization_info'].get(
-            'primary_bundle_id',
-            build_info['identifier']
+            'primary_bundle_id', build_info['identifier']
         ),
         '--username',
         build_info['notarization_info']['username'],
@@ -699,11 +698,12 @@ def notarize(build_info, options):
             ['--asc-provider', build_info['notarization_info']['asc_provider']]
         )
     retcode, proc_stdout, proc_stderr = run_subprocess(cmd)
+
     try:
         output = readPlistFromString(proc_stdout)
     except ExpatError:
         print(proc_stderr, file=sys.stderr)
-        raise MunkiPkgError("Notarization failed. Unable to run xcrun altool")
+        raise MunkiPkgError("Notarization upload failed. Unable to run xcrun altool")
 
     if retcode:
         for product_error in output.get('product-errors', []):
@@ -714,18 +714,101 @@ def notarize(build_info, options):
         raise MunkiPkgError("Notarization failed")
 
     try:
-        display(
-            "RequestUUID " + output['notarization-upload']['RequestUUID'],
-            options.quiet,
-            "altool",
-        )
+        request_uuid = output['notarization-upload']['RequestUUID']
+        display("RequestUUID " + request_uuid, options.quiet, "altool")
         display("SUCCESS " + output['success-message'], options.quiet, "altool")
     except KeyError:
         raise MunkiPkgError("Unexpected output from altool")
 
+    return request_uuid
+
+
+def get_notarization_state(request_uuid, build_info, options):
+    '''Checks for result of notarization process'''
+    state = {}
+    cmd = [
+        XCRUN,
+        'altool',
+        '--notarization-info',
+        request_uuid,
+        '--username',
+        build_info['notarization_info']['username'],
+        '--password',
+        build_info['notarization_info']['password'],
+        '--output-format',
+        'xml',
+    ]
+    retcode, proc_stdout, proc_stderr = run_subprocess(cmd)
+
+    try:
+        output = readPlistFromString(proc_stdout)
+    except ExpatError:
+        print(proc_stderr, file=sys.stderr)
+        raise MunkiPkgError("Notarization check failed. Unable to run xcrun altool")
+
+    if retcode or 'notarization-info' not in output:
+        print("altool: " + output.get('success-message', 'Unexpected response'))
+    else:
+        state['log_url'] = output['notarization-info'].get('LogFileURL', '')
+        state['status'] = output['notarization-info'].get('Status', 'Unknown')
+        state['code'] = output['notarization-info'].get('Status Code', None)
+        state['message'] = output['notarization-info'].get('Status Message', '')
+        return state
+
+
+def notarization_done(state, sleep_time, options):
+    '''Evaluates whether notarization is still in progress'''
+    if state['status'] == 'success':
+        display("Notarization successful. {}".format(state['message']), options.quiet)
+        return True
+    elif state['status'] == 'in progress':
+        display(
+            "Notarization still in progress. Trying again in {} seconds".format(
+                sleep_time
+            ),
+            options.quiet,
+        )
+        return False
+    else:
+        display(
+            "Notarization unsuccessful:\n"
+            "\tStatus: {}\n"
+            "\tStatus Code: {}\n"
+            "\tStatus Message: {}\n"
+            "\tLogFileURL: {}".format(
+                state['status'], state['code'], state['message'], state['log_url']
+            ),
+            options.quiet,
+        )
+        raise MunkiPkgError("Notarization failed")
+
+
+def wait_for_notarization(request_uuid, build_info, options):
+    '''Checks notarization state until it is done or we exceed the timeout value'''
+    display("Getting notarization state", options.quiet)
+    timeout = build_info['notarization_info'].get('staple_timeout', STAPLE_TIMEOUT)
+    counter = 0
+    sleep_time = STAPLE_SLEEP
+
+    while counter < timeout:
+        time.sleep(sleep_time)
+        state = get_notarization_state(request_uuid, build_info, options)
+        counter += sleep_time
+        sleep_time += STAPLE_SLEEP
+
+        if notarization_done(state, sleep_time, options):
+            return True
+
+    print(
+        "munkipkg: Timeout EXCEEDED when waiting for the notarization to complete. "
+        "You can manually staple the package later if notarization is successful.",
+        file=sys.stderr,
+    )
+    return False
+
 
 def staple(build_info, options):
-    '''Use xcrun staple to add staple to our package'''
+    '''Use xcrun staple to add a staple to our package'''
     display("Stapling package", options.quiet)
     cmd = [
         XCRUN,
@@ -733,27 +816,10 @@ def staple(build_info, options):
         'staple',
         os.path.join(build_info['build_dir'], build_info['name']),
     ]
-
-    timeout = build_info['notarization_info'].get('stapler_timeout', STAPLER_TIMEOUT)
-
-    counter = 0
-    while counter < timeout:
-        retcode, proc_stdout, proc_stderr = run_subprocess(cmd)
-
-        # Stapler exited with code 0
-        if not retcode:
-            break
-        else:
-            display(
-                "Staple not yet available. Trying again in {} seconds".format(
-                    STAPLER_SLEEP
-                ),
-                options.quiet,
-            )
-        time.sleep(STAPLER_SLEEP)
-        counter += STAPLER_SLEEP
+    retcode, proc_stdout, proc_stderr = run_subprocess(cmd)
 
     if retcode:
+        print("stapler: FAILURE " + proc_stderr, file=sys.stderr)
         raise MunkiPkgError("Stapling failed")
     else:
         display("The staple and validate action worked!", options.quiet)
@@ -824,8 +890,10 @@ def build(project_dir, options):
         # notarize the pkg
         if 'notarization_info' in build_info and not options.skip_notarization:
             try:
-                notarize(build_info, options)
-                if not options.skip_stapling:
+                request_uuid = upload_to_notary(build_info, options)
+                if not options.skip_stapling and wait_for_notarization(
+                    request_uuid, build_info, options
+                ):
                     staple(build_info, options)
             except MunkiPkgError as err:
                 print("ERROR: %s" % err, file=sys.stderr)

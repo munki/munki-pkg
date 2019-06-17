@@ -152,7 +152,8 @@ String containing the package name. If this is missing, one is constructed using
 
 By default, the package name is suffixed with the version number using `${version}`. This suffix can be removed if desired, or it can be specified manually.
 
-JSON Example: 
+JSON Example:
+
 ```json
 "name": "munki_kickstart-${version}.pkg"
 "name": "munki_kickstart.pkg"
@@ -165,7 +166,7 @@ String. One of "recommended", "preserve", or "preserve-other". Defaults to "reco
 **postinstall_action**  
 String. One of "none", "logout", or "restart". Defaults to "none".
 
-**preserve_xattr**
+**preserve_xattr**  
  Boolean: true or false. Defaults to false. Setting this to true would preserve extended attributes, like codesigned flat files (e.g. script files), amongst other xattr's such as the apple quarantine warning (com.apple.quarantine).
 
 **product id**  

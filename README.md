@@ -302,7 +302,7 @@ Keys/values of the `notarization_info` dictionary:
 | username          | String  | Yes      | Login email address of your developer Apple ID |
 | password          | String  | Yes      | 2FA app specific password. For information about the password and saving it to the login keychain see the web page [Customizing the Notarization Workflow](https://developer.apple.com/documentation/security/notarizing_your_app_before_distribution/customizing_the_notarization_workflow) |
 | asc_provider      | String  | No       | Only needed when a user account is associated with multiple providers |
-| primary_bundle_id | String  | No       | Defaults to `identifier`. `primary_bundle_id` is useful when `identifier` contains characters such as '_' Apple notary service does not like |
+| primary_bundle_id | String  | No       | Defaults to `identifier`. Whether specified or not underscore characters are always automatically converted to hyphens since Apple notary service does not like underscores |
 | staple_timeout    | Integer | No       | See paragraph bellow |
 
 **About accessing password in keychain**

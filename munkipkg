@@ -667,6 +667,19 @@ def build_distribution_pkg(build_info, options):
         raise BuildError(err)
 
 
+def get_primary_bundle_id(build_info):
+    '''Gets primary bundle id for notarization'''
+    primary_bundle_id = build_info['notarization_info'].get(
+            'primary_bundle_id',
+            build_info['identifier'],
+    )
+
+    # Apple notary service does not like underscores
+    primary_bundle_id = primary_bundle_id.replace('_', '-')
+
+    return primary_bundle_id
+
+
 def upload_to_notary(build_info, options):
     '''Use xcrun altool to upload the package to Apple notary service'''
     if not (
@@ -681,9 +694,7 @@ def upload_to_notary(build_info, options):
         'altool',
         '--notarize-app',
         '--primary-bundle-id',
-        build_info['notarization_info'].get(
-            'primary_bundle_id', build_info['identifier']
-        ),
+        get_primary_bundle_id(build_info),
         '--username',
         build_info['notarization_info']['username'],
         '--password',

@@ -908,6 +908,7 @@ def build(project_dir, options):
                     staple(build_info, options)
             except MunkiPkgError as err:
                 print("ERROR: %s" % err, file=sys.stderr)
+                return -1
 
         # cleanup temp dir
         _ = subprocess.call(["/bin/rm", "-rf", build_info['tmpdir']])

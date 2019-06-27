@@ -443,7 +443,7 @@ def write_build_info(build_info, project_dir, options):
                 json.dump(
                     build_info, json_file, ensure_ascii=True,
                     indent=4, separators=(',', ': '))
-        if options.yaml:
+        elif options.yaml:
             build_info_yaml = os.path.join(
                 project_dir, "%s.yaml" % BUILD_INFO_FILE)
             with open(build_info_yaml, 'w') as yaml_file:

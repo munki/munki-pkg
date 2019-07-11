@@ -173,9 +173,7 @@ def make_component_property_list(build_info, options):
             "pkgbuild execution failed with error code %d: %s"
             % (err.errno, err.strerror))
     if returncode:
-        raise BuildError(
-            "pkgbuild failed with exit code %d: %s"
-            % (returncode, " ".join(str(err).split())))
+        raise BuildError("pkgbuild failed with exit code %d" % returncode)
     try:
         plist = readPlist(component_plist)
     except ExpatError as err:
@@ -541,7 +539,11 @@ def add_signing_options_to_cmd(cmd, build_info, options):
         if 'additional_cert_names' in signing_info:
             additional_cert_names = signing_info['additional_cert_names']
             # convert single string to list
-            if isinstance(additional_cert_names, basestring):
+            try:
+                text_types = basestring # pylint: disable=basestring-builtin
+            except NameError:
+                text_types = str
+            if isinstance(additional_cert_names, text_types):
                 additional_cert_names = [additional_cert_names]
             for cert_name in additional_cert_names:
                 cmd.extend(['--cert', cert_name])
@@ -698,7 +700,7 @@ def get_pkginfo_attr(pkginfo_dom, attribute_name):
     pkgrefs = pkginfo_dom.getElementsByTagName('pkg-info')
     if pkgrefs:
         for ref in pkgrefs:
-            keys = ref.attributes.keys()
+            keys = list(ref.attributes.keys())
             if attribute_name in keys:
                 return ref.attributes[attribute_name].value.encode('UTF-8')
     return None
@@ -899,7 +901,7 @@ def import_bundle_pkg(pkg_path, project_dir, options):
         display("Created new package project at %s"
                 % project_dir, options.quiet)
         return 0
-    except(MunkiPkgError, OSError) as err:
+    except (MunkiPkgError, OSError) as err:
         print('ERROR: %s' % err, file=sys.stderr)
         return -1
 
@@ -942,7 +944,7 @@ def import_flat_pkg(pkg_path, project_dir, options):
         display("Created new package project at %s"
                 % project_dir, options.quiet)
         return 0
-    except(MunkiPkgError, OSError) as err:
+    except (MunkiPkgError, OSError) as err:
         print('ERROR: %s' % err, file=sys.stderr)
         return -1
 

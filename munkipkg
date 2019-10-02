@@ -756,15 +756,17 @@ def get_notarization_state(request_uuid, build_info, options):
     except ExpatError:
         print(proc_stderr, file=sys.stderr)
         raise MunkiPkgError("Notarization check failed. Unable to run xcrun altool")
-
     if retcode or 'notarization-info' not in output:
         print("altool: " + output.get('success-message', 'Unexpected response'))
+        print("altool: DEBUG output follows")
+        print(output)
+        state['status'] = 'Unknown'
     else:
         state['log_url'] = output['notarization-info'].get('LogFileURL', '')
         state['status'] = output['notarization-info'].get('Status', 'Unknown')
         state['code'] = output['notarization-info'].get('Status Code', None)
         state['message'] = output['notarization-info'].get('Status Message', '')
-        return state
+    return state
 
 
 def notarization_done(state, sleep_time, options):
@@ -772,10 +774,11 @@ def notarization_done(state, sleep_time, options):
     if state['status'] == 'success':
         display("Notarization successful. {}".format(state['message']), options.quiet)
         return True
-    elif state['status'] == 'in progress':
+    elif state['status'] in ['in progress', 'Unknown']:
         display(
-            "Notarization still in progress. Trying again in {} seconds".format(
-                sleep_time
+            "Notarization state: {}. Trying again in {} seconds".format(
+                state['status'],
+                sleep_time,
             ),
             options.quiet,
         )
@@ -803,9 +806,10 @@ def wait_for_notarization(request_uuid, build_info, options):
 
     while counter < timeout:
         time.sleep(sleep_time)
-        state = get_notarization_state(request_uuid, build_info, options)
         counter += sleep_time
         sleep_time += STAPLE_SLEEP
+
+        state = get_notarization_state(request_uuid, build_info, options)
 
         if notarization_done(state, sleep_time, options):
             return True

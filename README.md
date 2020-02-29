@@ -69,7 +69,7 @@ XML plist is the default and preferred format. It can represent all the needed O
 
 This must be in XML (text) format. Binary plists and "old-style-ASCII"-formatted plists are not supported. For a new project created with `munkipkg --create Foo`, the build-info.plist looks like this:
 
-```plist
+```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -179,6 +179,32 @@ The value of this key is referenced in the default package name using `${version
 Dictionary of signing options. See below.
 
 
+### Build directory
+
+`munkipkg` creates its packages inside the build directory. A build directory is created within the project directory if one doesn't exist at build time.
+
+
+### Scripts directory
+
+The scripts folder contains scripts to be included as part of the package.
+
+munkipkg makes use of `pkgbuild`. Therefore the "main" scripts must be named either "preinstall" or "postinstall" (with no extensions) and must have their execute bit set. Other scripts can be called by the preinstall or postinstall scripts, but only those two scripts will be automatically called during package installation.
+
+
+### Payload directory
+
+The payload folder contains the files to be installed. These files must have the intended directory structure. Files at the top-level of the payload folder will be installed at the root of the target volume. If you wanted to install files 'foo' and 'bar' in /usr/local/bin of the target volume, your payload folder would look like this:
+
+```
+payload/
+    usr/
+        local/
+            bin/
+                foo
+                bar
+```
+
+
 ### Payload-free packages
 
 You can use this tool to build payload-free packages in two variants.
@@ -192,7 +218,7 @@ If the payload folder exists, but is empty, you'll get a "pseudo-payload-free" p
 
 You may sign packages as part of the build process by adding a signing\_info dictionary to the build\_info.plist:
 
-```plist
+```xml
     <key>signing_info</key>
     <dict>
         <key>identity</key>
@@ -224,11 +250,6 @@ or, in JSON format in a build-info.json file:
 The only required key/value in the signing_info dictionary is 'identity'.
 
 See the **SIGNED PACKAGES** section of the man page for `pkgbuild` or the **SIGNED PRODUCT ARCHIVES** section of the man page for `productbuild` for more information on the signing options.
-
-
-### Scripts
-
-munkipkg makes use of `pkgbuild`. Therefore the "main" scripts must be named either "preinstall" or "postinstall" (with no extensions) and must have their execute bit set. Other scripts can be called by the preinstall or postinstall scripts, but only those two scripts will be automatically called during package installation.
 
 
 ### Additional options

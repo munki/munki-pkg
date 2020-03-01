@@ -116,7 +116,7 @@ If both build-info.plist and build-info.json are present, the plist file will be
 
 #### build-info.yaml
 
-As a third alternative, you may specify build-info in YAML format. A new project created with `munkipkg --create --yaml Foo` would have this build-info.yaml file:
+As a third alternative, you may specify build-info in YAML format, if you've installed the Python YAML module (PyYAML). A new project created with `munkipkg --create --yaml Foo` would have this build-info.yaml file:
 
 ```yaml
 distribution_style: false

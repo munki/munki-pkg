@@ -63,7 +63,7 @@ Causes munkipkg to build the package defined in package_project_directory. The b
 
 Build options are stored in a file at the root of the package project. XML plist and JSON formats are supported. YAML is supported if you also install the Python PyYAML module. A build-info file is not strictly required, and a build will use default values if this file is missing.
 
-XML plist is the default and preferred format. It can represent all the needed OS X data structures. JSON and YAML are also supported, but there is no guarantee that these formats will support future features of munkipkg. (Translation: use XML plist format unless it really, really bothers you; in that case use JSON or YAML but don't come crying to me if you can't use shiny new features with your JSON or YAML files. And please don't ask for help _formatting_ your JSON or YAML!)
+XML plist is the default and preferred format. It can represent all the needed macOS data structures. JSON and YAML are also supported, but there is no guarantee that these formats will support future features of munkipkg. (Translation: use XML plist format unless it really, really bothers you; in that case use JSON or YAML but don't come crying to me if you can't use shiny new features with your JSON or YAML files. And please don't ask for help _formatting_ your JSON or YAML!)
 
 #### build-info.plist
 
@@ -131,6 +131,10 @@ version: '1.0'
 ```
 
 If both build-info.plist and build-info.yaml are present, the plist file will be used; the yaml file will be ignored.
+
+##### JSON and YAML formatting note
+
+Note in the JSON and YAML examples that the version "number" is wrapped in quotes. This is important -- XML plists have explict type tags and the correct type for a version "number" is `string`. JSON and YAML infer a value's type based on formatting. Without quotes wrapping the value, `1.0` would be interpreted as a floating point number, and not a string, potentially causing an error at build time. This issue might affect future build-info keys supported by `munkipkg`, so take care.
 
 #### build-info keys
 

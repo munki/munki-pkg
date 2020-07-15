@@ -680,13 +680,35 @@ def get_primary_bundle_id(build_info):
     return primary_bundle_id
 
 
+def add_authentication_options(cmd, build_info):
+    '''Add --password or --apiKey + --apiIssuer options to the command'''
+    if 'password' in build_info['notarization_info']:
+        cmd.extend(
+            ['--password', build_info['notarization_info']['password']]
+        )
+    elif (
+          'api_key' in build_info['notarization_info'] and
+          'api_issuer' in build_info['notarization_info']
+    ):
+        cmd.extend(
+            [
+                '--apiKey',
+                build_info['notarization_info']['api_key'],
+                '--apiIssuer',
+                build_info['notarization_info']['api_issuer'],
+            ]
+        )
+    else:
+        raise MunkiPkgError(
+            "password or api_key + api_issuer keys "
+            "must be specified in notarization_info."
+        )
+
+
 def upload_to_notary(build_info, options):
     '''Use xcrun altool to upload the package to Apple notary service'''
-    if not (
-        'username' in build_info['notarization_info']
-        and 'password' in build_info['notarization_info']
-    ):
-        raise MunkiPkgError("notarization_info lacks username or password.")
+    if 'username' not in build_info['notarization_info']:
+        raise MunkiPkgError("notarization_info lacks username key.")
 
     display("Uploading package to Apple notary service", options.quiet)
     cmd = [
@@ -697,8 +719,6 @@ def upload_to_notary(build_info, options):
         get_primary_bundle_id(build_info),
         '--username',
         build_info['notarization_info']['username'],
-        '--password',
-        build_info['notarization_info']['password'],
         '--output-format',
         'xml',
         '--file',
@@ -708,7 +728,11 @@ def upload_to_notary(build_info, options):
         cmd.extend(
             ['--asc-provider', build_info['notarization_info']['asc_provider']]
         )
+    add_authentication_options(cmd, build_info)
+
     retcode, proc_stdout, proc_stderr = run_subprocess(cmd)
+    if proc_stdout.startswith('Generated JWT'):
+        proc_stdout = proc_stdout.split('\n',1)[1]
 
     try:
         output = readPlistFromString(proc_stdout)
@@ -744,12 +768,14 @@ def get_notarization_state(request_uuid, build_info, options):
         request_uuid,
         '--username',
         build_info['notarization_info']['username'],
-        '--password',
-        build_info['notarization_info']['password'],
         '--output-format',
         'xml',
     ]
+    add_authentication_options(cmd, build_info)
+
     retcode, proc_stdout, proc_stderr = run_subprocess(cmd)
+    if proc_stdout.startswith('Generated JWT'):
+        proc_stdout = proc_stdout.split('\n',1)[1]
 
     try:
         output = readPlistFromString(proc_stdout)

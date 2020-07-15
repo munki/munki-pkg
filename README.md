@@ -165,7 +165,7 @@ String. One of "recommended", "preserve", or "preserve-other". Defaults to "reco
 **postinstall_action**  
 String. One of "none", "logout", or "restart". Defaults to "none".
 
-**preserve_xattr**
+**preserve_xattr**  
  Boolean: true or false. Defaults to false. Setting this to true would preserve extended attributes, like codesigned flat files (e.g. script files), amongst other xattr's such as the apple quarantine warning (com.apple.quarantine).
 
 **product id**  
@@ -300,17 +300,33 @@ Keys/values of the `notarization_info` dictionary:
 | Key               | Type    | Required | Description |
 | ----------------- | ------- | -------- | ----------- |
 | username          | String  | Yes      | Login email address of your developer Apple ID |
-| password          | String  | Yes      | 2FA app specific password. For information about the password and saving it to the login keychain see the web page [Customizing the Notarization Workflow](https://developer.apple.com/documentation/security/notarizing_your_app_before_distribution/customizing_the_notarization_workflow) |
+| password          | String  | (see authentication) | 2FA app specific password. |
+| api_key           | String  | (see authentication) | App Store Connect API access key. |
+| api_issuer        | String  | (see authentication) | App Store Connect API key issuer ID. |
 | asc_provider      | String  | No       | Only needed when a user account is associated with multiple providers |
 | primary_bundle_id | String  | No       | Defaults to `identifier`. Whether specified or not underscore characters are always automatically converted to hyphens since Apple notary service does not like underscores |
 | staple_timeout    | Integer | No       | See paragraph bellow |
 
-**About accessing password in keychain**
+**Authentication**  
 
-If you configure `munki-pkg` to use the password from the login keychain user is going to be prompted to allow access to the password.
-You can authorize this once clicking *Allow* or permanently clicking *Always Allow*.
+To notarize the package you have to use Apple ID with access to App Store Connect. There are two possible authentication methods: App-specific password and API key. Either `password` or `api_key` + `api_issuer` keys(s) **must** be specified in the `notarization_info` dictionary. If you specify both `password` takes precedence.
 
-**About stapling**
+**Using the password**  
+
+For information about the password and saving it to the login keychain see the web page [Customizing the Notarization Workflow](https://developer.apple.com/documentation/security/notarizing_your_app_before_distribution/customizing_the_notarization_workflow).
+
+If you configure `munki-pkg` to use the password from the login keychain user is going to be prompted to allow access to the password. You can authorize this once clicking *Allow* or permanently clicking *Always Allow*.
+
+**Creating the API key**  
+
+1. Log into [App Store Connect](https://appstoreconnect.apple.com) using developer Apple ID with access to API keys.
+2. Go to Users and Access -> Keys.
+3. Click + button to create a new key.
+4. Name the key and select proper access - Developer.
+5. Download the API key and save it to one of the following directories `./private_keys`, `~/private_keys`, `~/.private_keys`. Filename format is `AuthKey_<api_key>.p8`. Use `<api_key>` part when configuring `api_key` option.
+6. Note the *Issuer ID* at the top of the web page. It must be provided using `api_issuer` option.
+
+**About stapling**  
 
 `munki-pkg` basically does following:
 

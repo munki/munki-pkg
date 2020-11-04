@@ -136,6 +136,9 @@ def validate_build_info_keys(build_info, file_path):
 def read_build_info(path):
     '''Reads and validates data in the build_info'''
     build_info = None
+    exception_list = (ExpatError, ValueError)
+    if YAML_INSTALLED:
+        exception_list = (ExpatError, ValueError, yaml.scanner.ScannerError)
     try:
         if path.endswith('.json'):
             with open(path, 'r') as openfile:
@@ -145,7 +148,7 @@ def read_build_info(path):
                 build_info = yaml.load(openfile, Loader=yaml.FullLoader)
         elif path.endswith('.plist'):
             build_info = readPlist(path)
-    except (ExpatError, ValueError, yaml.scanner.ScannerError) as err:
+    except exception_list as err:
         raise BuildError("%s is not a valid %s file: %s"
                          % (path, path.split('.')[-1], str(err)))
     validate_build_info_keys(build_info, path)

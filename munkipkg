@@ -43,7 +43,7 @@ except ImportError:
 from xml.dom import minidom
 from xml.parsers.expat import ExpatError
 
-VERSION = "0.6"
+VERSION = "0.7"
 DITTO = "/usr/bin/ditto"
 LSBOM = "/usr/bin/lsbom"
 PKGBUILD = "/usr/bin/pkgbuild"
@@ -155,7 +155,7 @@ def read_build_info(path):
     if '${version}' in build_info['name']:
         build_info['name'] = build_info['name'].replace(
             '${version}',
-            build_info['version']
+            str(build_info['version'])
         )
 
     return build_info
@@ -562,7 +562,7 @@ def build_pkg(build_info, options):
     cmd = [PKGBUILD,
            '--ownership', build_info['ownership'],
            '--identifier', build_info['identifier'],
-           '--version', build_info['version'],
+           '--version', str(build_info['version']),
            '--info', build_info['pkginfo_path']]
     if build_info['payload']:
         cmd.extend(['--root', build_info['payload']])
@@ -607,7 +607,7 @@ def build_distribution_pkg(build_info, options):
     # if build_info contains a product id use that for product id, otherwise
     # use package identifier
     product_id = build_info.get('product id', build_info['identifier'])
-    cmd.extend(['--identifier', product_id, '--version', build_info['version']])
+    cmd.extend(['--identifier', product_id, '--version', str(build_info['version'])])
     # add the input and output package paths
     cmd.extend(['--package', pkginputname, distoutputname])
 

@@ -183,6 +183,9 @@ The value of this key is referenced in the default package name using `${version
 **signing_info**  
 Dictionary of signing options. See below.
 
+**notarization_info**  
+Dictionary of notarization options. See below.
+
 
 ### Build directory
 
@@ -257,6 +260,86 @@ The only required key/value in the signing_info dictionary is 'identity'.
 See the **SIGNED PACKAGES** section of the man page for `pkgbuild` or the **SIGNED PRODUCT ARCHIVES** section of the man page for `productbuild` for more information on the signing options.
 
 
+### Package notarization
+
+**Important notes**:
+
+- Please read the [Customizing the Notarization Workflow](https://developer.apple.com/documentation/security/notarizing_your_app_before_distribution/customizing_the_notarization_workflow) web page before you start notarizing your packages.
+- Xcode 10 (or newer) is **required**.  If you have more than one version of Xcode installed on your Mac, be sure to use the xcode-select utility to choose the appropriate version: `sudo xcode-select -s /path/to/Xcode10.app`.
+- Unproxied network access to the Apple infrastructure (Usually `17.0.0.0/8` network) is required.
+- Notarization tool tries to notarize not only the package but also the package payload. All code in the payload (including but not limited to app bundles, frameworks, kernel extensions) needs to be properly signed with the hardened runtime restrictions in order to be notarized. Please read Apple Developer documentation for more information.
+
+You may notarize **SIGNED PACKAGES** as part of the build process by adding a `notarization_info` dictionary to the build\_info.plist:
+
+```plist
+    <key>notarization_info</key>
+    <dict>
+        <key>username</key>
+        <string>john.appleseed@apple.com</string>
+        <key>password</key>
+        <string>@keychain:AC_PASSWORD</string>
+        <key>asc_provider</key>
+        <string>JohnAppleseed1XXXXXX8</string>
+        <key>staple_timeout</key>
+        <integer>600</integer>
+    </dict>
+```
+
+or, in JSON format in a build-info.json file:
+
+```json
+    "notarization_info": {
+        "username": "john.appleseed@apple.com",
+        "password": "@keychain:AC_PASSWORD",
+        "asc_provider": "JohnAppleseed1XXXXXX8",
+        "stapler_timeout": 600
+    }
+```
+
+Keys/values of the `notarization_info` dictionary:
+
+| Key               | Type    | Required | Description |
+| ----------------- | ------- | -------- | ----------- |
+| username          | String  | Yes      | Login email address of your developer Apple ID |
+| password          | String  | (see authentication) | 2FA app specific password. |
+| api_key           | String  | (see authentication) | App Store Connect API access key. |
+| api_issuer        | String  | (see authentication) | App Store Connect API key issuer ID. |
+| asc_provider      | String  | No       | Only needed when a user account is associated with multiple providers |
+| primary_bundle_id | String  | No       | Defaults to `identifier`. Whether specified or not underscore characters are always automatically converted to hyphens since Apple notary service does not like underscores |
+| staple_timeout    | Integer | No       | See paragraph bellow |
+
+**Authentication**  
+
+To notarize the package you have to use Apple ID with access to App Store Connect. There are two possible authentication methods: App-specific password and API key. Either `password` or `api_key` + `api_issuer` keys(s) **must** be specified in the `notarization_info` dictionary. If you specify both `password` takes precedence.
+
+**Using the password**  
+
+For information about the password and saving it to the login keychain see the web page [Customizing the Notarization Workflow](https://developer.apple.com/documentation/security/notarizing_your_app_before_distribution/customizing_the_notarization_workflow).
+
+If you configure `munki-pkg` to use the password from the login keychain user is going to be prompted to allow access to the password. You can authorize this once clicking *Allow* or permanently clicking *Always Allow*.
+
+**Creating the API key**  
+
+1. Log into [App Store Connect](https://appstoreconnect.apple.com) using developer Apple ID with access to API keys.
+2. Go to Users and Access -> Keys.
+3. Click + button to create a new key.
+4. Name the key and select proper access - Developer.
+5. Download the API key and save it to one of the following directories `./private_keys`, `~/private_keys`, `~/.private_keys`. Filename format is `AuthKey_<api_key>.p8`. Use `<api_key>` part when configuring `api_key` option.
+6. Note the *Issuer ID* at the top of the web page. It must be provided using `api_issuer` option.
+
+**About stapling**  
+
+`munki-pkg` basically does following:
+
+1. Uploads the package to Apple notary service using `xcrun altool --notarize-app --primary-bundle-id "com.github.munki.pkg.munki-kickstart" --username "john.appleseed@apple.com" --password "@keychain:AC_PASSWORD" --file munki_kickstart.pkg`
+2. Checks periodically state of notarization process using `xcrun altool --notarization-info <UUID> --username "john.appleseed@apple.com" --password "@keychain:AC_PASSWORD"`
+3. If notarization was successful `munki-pkg` staples the package using `xcrun stapler staple munki_kickstart.pkg`
+
+There is a time delay between successful upload of a signed package to the notary service and notarization result from the service.
+`munki-pkg` checks multiple times if notarization process is done. There is sleep period between each try. Sleep period starts at 5 seconds and increases by increments of 5 (5s, 10s, 10s, etc.).
+With `staple_timeout` parameter you can specify timeout in seconds (**default: 300 seconds**) after which `munki-pkg` gives up.
+
+
 ### Additional options
 
 `--create`  
@@ -269,6 +352,12 @@ This option will import an existing package and convert it into a package projec
 
 `--export-bom-info`  
 This option causes munkipkg to export bom info from the built package to a file named "Bom.txt" in the root of the package project directory. Since git does not normally track ownership, group, or mode of tracked files, and since the "ownership" option to `pkgbuild` can also result in different owner and group of files included in the package payload, exporting this info into a text file allows you to track this metadata in git (or other version control) as well.
+
+`--skip-notarization`  
+Use this option to skip the whole notarization process when notarization is specified in the build-info.
+
+`--skip-stapling`  
+Use this option to skip only the stapling part of the notarization process when notarization is specified in the build-info.
 
 `--sync`  
 This option causes munkipkg to read the Bom.txt file, and use its information to create any missing empty directories and to set the permissions on files and directories. See [**Important git notes**](#important-git-notes) below.

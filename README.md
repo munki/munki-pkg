@@ -264,7 +264,8 @@ See the **SIGNED PACKAGES** section of the man page for `pkgbuild` or the **SIGN
 
 **Important notes**:
 
-- Please read the [Customizing the Notarization Workflow](https://developer.apple.com/documentation/security/notarizing_your_app_before_distribution/customizing_the_notarization_workflow) web page before you start notarizing your packages.
+- munki-pkg uses `altool` to notarize packages. Since Xcode 13 `altool` is deprecated in favor of new `notarytool` [utility](https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution/customizing_the_notarization_workflow). munki-pkg continues to use `altool` which still works with Xcode 13. We do plan to start using the `notarytool`. Keep eye on project issues and pull requests.
+- Please read the [Notarizing Apps from the Command Line with Xcode 12 and Earlier](https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution/customizing_the_notarization_workflow/notarizing_apps_from_the_command_line_with_xcode_12_and_earlier) web page before you start notarizing your packages
 - Xcode 10 (or newer) is **required**.  If you have more than one version of Xcode installed on your Mac, be sure to use the xcode-select utility to choose the appropriate version: `sudo xcode-select -s /path/to/Xcode10.app`.
 - Unproxied network access to the Apple infrastructure (Usually `17.0.0.0/8` network) is required.
 - Notarization tool tries to notarize not only the package but also the package payload. All code in the payload (including but not limited to app bundles, frameworks, kernel extensions) needs to be properly signed with the hardened runtime restrictions in order to be notarized. Please read Apple Developer documentation for more information.
@@ -314,7 +315,7 @@ To notarize the package you have to use Apple ID with access to App Store Connec
 
 **Using the password**  
 
-For information about the password and saving it to the login keychain see the web page [Customizing the Notarization Workflow](https://developer.apple.com/documentation/security/notarizing_your_app_before_distribution/customizing_the_notarization_workflow).
+For information about the password and saving it to the login keychain see the web page [Notarizing Apps from the Command Line with Xcode 12 and Earlier](https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution/customizing_the_notarization_workflow/notarizing_apps_from_the_command_line_with_xcode_12_and_earlier).
 
 If you configure `munki-pkg` to use the password from the login keychain user is going to be prompted to allow access to the password. You can authorize this once clicking *Allow* or permanently clicking *Always Allow*.
 

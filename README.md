@@ -14,6 +14,12 @@ Another tool that solves a similar problem is Joe Block's **The Luggage** (https
 
 So why consider using munkipkg? It's simple and self-contained, with no external dependencies. It can use JSON or YAML for its build settings file/data, instead of Makefile syntax or XML plists. It does not install a root-level system daemon as does autopkg. It can easily build distribution-style packages and can sign them. Finally, munkipkg can import existing packages.
 
+## macOS and Python notes
+
+munkipkg requires Python. It also uses several command-line tools available on macOS. There is no support for running these on Windows or Linux.
+
+In macOS 12.3, Apple will be removing its Python 2.7 install. You'll need to provide your own Python to use munkipkg. It should run under Python 2.7, and Python 3.6-3.9 without issue.
+
 ## Basic operation
 
 munkipkg builds flat packages using Apple's `pkgbuild` and `productbuild` tools.

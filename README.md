@@ -271,7 +271,7 @@ See the **SIGNED PACKAGES** section of the man page for `pkgbuild` or the **SIGN
 
 You may notarize **SIGNED PACKAGES** as part of the build process by adding a `notarization_info` dictionary to the build\_info.plist:
 
-```plist
+```xml
     <key>notarization_info</key>
     <dict>
         <key>username</key>

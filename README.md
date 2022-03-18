@@ -27,7 +27,7 @@ Some options for providing an appropriate Python:
 3) Install Apple's Python 3 by runnning `/usr/bin/python3` and accepting the prompt to install Python (if Xcode or the Command line development tools are not already present). Again you might need to create a symlink so that `/usr/bin/env python` executes the Python you installed.
 4) There are other ways to install Python, inlcuding Homebrew (https://brew.sh), macadmins-python (https://github.com/macadmins/python), my relocatable-python tool (https://github.com/gregneagle/relocatable-python), and more.
 
-If you don't want to create a symlink or alter your PATH so that /usr/bin/env python executes an appropriate Python for munkipkg, you can just call munkipkg _from_ the Python of your choice: `python3 /path/to/munkipkg [options]`
+If you don't want to create a symlink or alter your PATH so that `/usr/bin/env python` executes an appropriate Python for munkipkg, you can just call munkipkg _from_ the Python of your choice: `python3 /path/to/munkipkg [options]`
 
 You might ask "Why not change the shebang to `#!/usr/bin/env python3` or even `#!/usr/bin/python3`? That could break many current users of the tool who _haven't_ upgraded to macOS 12.3 and don't have Xcode and/or the Command line development tools installed. If/when you upgrade to macOS 12.3, you'll need to take some action anyway. No need to punish everyone else.
 

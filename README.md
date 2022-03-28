@@ -205,6 +205,14 @@ Dictionary of signing options. See below.
 **notarization_info**  
 Dictionary of notarization options. See below.
 
+#### build-info keys supported by macOS 12+
+
+**compression**  
+String. `latest` or `legacy`. Use `latest` in conjunction with `min-os-version` of `10.10` or newer for better .pkg compression.
+
+**min-os-version**  
+String. Set to 10.10+ to enable better compression.
+
 
 ### Build directory
 

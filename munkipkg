@@ -150,6 +150,7 @@ def run_subprocess(cmd):
 def validate_build_info_keys(build_info, file_path):
     '''Validates the data read from build_info.(plist|json|yaml|yml)'''
     valid_values = {
+        'compression': ['legacy', 'latest'],
         'ownership': ['recommended', 'preserve', 'preserve-other'],
         'postinstall_action': ['none', 'logout', 'restart'],
         'suppress_bundle_relocation': [True, False],

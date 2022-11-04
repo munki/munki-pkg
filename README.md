@@ -22,9 +22,12 @@ In macOS 12.3, Apple removed the Python 2.7 install. Out-of-the-box, there is no
 
 Some options for providing an appropriate Python:
 
-1) If you also use Munki, use Munki's bundled Python. You could make a symlink at /usr/local/bin/python pointing to /usr/local/munki/munki-python (this assumes /usr/local/bin is in your PATH, which it is by default. You could create symlink in any writable directory in your PATH if it differs)
+1) If you also use Munki, use Munki's bundled Python. You could make a symlink at /usr/local/bin/python pointing to /usr/local/munki/munki-python (this assumes /usr/local/bin is in your PATH, which it is by default. You could create the symlink in any writable directory in your PATH if it differs)
 2) Install Python from https://www.python.org. You might still need to create a symlink somewhere so that `/usr/bin/env python` executes the Python you installed.
-3) Install Apple's Python 3 by running `/usr/bin/python3` and accepting the prompt to install Python (if Xcode or the Command line development tools are not already present). Again you might need to create a symlink so that `/usr/bin/env python` executes the Python you installed.
+3) Install Apple's Python 3 by running `/usr/bin/python3` and accepting the prompt to install Python (if Xcode or the Command line development tools are not already present). Again you might need to create a symlink so that `/usr/bin/env python` executes the Python you installed:
+```
+sudo ln -s /Library/Developer/CommandLineTools/usr/bin/python3 /usr/local/bin/python
+```
 4) There are other ways to install Python, inlcuding Homebrew (https://brew.sh), macadmins-python (https://github.com/macadmins/python), my relocatable-python tool (https://github.com/gregneagle/relocatable-python), and more.
 
 If you don't want to create a symlink or alter your PATH so that `/usr/bin/env python` executes an appropriate Python for munkipkg, you can just call munkipkg _from_ the Python of your choice: `python3 /path/to/munkipkg [options]`

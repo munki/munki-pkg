@@ -959,7 +959,7 @@ def get_pkginfo_attr(pkginfo_dom, attribute_name):
         for ref in pkgrefs:
             keys = list(ref.attributes.keys())
             if attribute_name in keys:
-                return ref.attributes[attribute_name].value.encode('UTF-8')
+                return ref.attributes[attribute_name].value
     return None
 
 

@@ -337,6 +337,47 @@ For information about the password and saving it to the login keychain see the w
 
 If you configure `munki-pkg` to use the password from the login keychain user is going to be prompted to allow access to the password. You can authorize this once clicking *Allow* or permanently clicking *Always Allow*.
 
+**How to Setup Your Keychain for Notarization with `notarytool`**
+
+Dependency: `notarytool` is bundled with Xcode, so you need to have the latest version of Xcode installed and the command line tools.
+
+Run: 
+`/Applications/Xcode.app/Contents/Developer/usr/bin/notarytool store-credentials` 
+
+It will ask you for a profile name, use: `notarization_credentials` as that is what all our pkginfo files will have as the `keychain_profile` key in the munki-pkg project json file, as such:
+
+Skip the next question about App Store API.
+
+1. It will move to ask you for a Developer Apple ID email
+2. The password here is a unique app-specific password created in appleid.apple.com from the same Developer ID account.
+3. Enter your Team ID from the developer certificate.
+
+All your munkipkg json project files will need that notarization info added as such:
+
+```
+{
+    "postinstall_action": "none",
+    "suppress_bundle_relocation": true,
+    "name": "PackageName.pkg",
+    "distribution_style": true,
+    "install_location": "/path/to/payload/location/",
+    "version": "14.0",
+    "ownership": "recommended",
+    "identifier": "com.domain.PackageName",
+    "signing_info": {
+        "identity": "Developer ID Installer: Company Name (Team ID)",
+        "keychain": "/path/to/certificate/signing.keychain",
+        "timestamp": true
+    },
+    "notarization_info": {
+        "keychain_profile": "notarization_credentials"
+    }
+}
+```
+
+`munki-pkg` will now call the `keychain_profile` from the json to run as the credentials for the notarization.
+
+
 **Creating the API key**  
 
 1. Log into [App Store Connect](https://appstoreconnect.apple.com) using developer Apple ID with access to API keys.

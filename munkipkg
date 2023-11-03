@@ -737,7 +737,7 @@ def upload_to_notary(build_info, options):
                 file=sys.stderr
             )
         raise MunkiPkgError("Notarization failed")
-    
+
     try:
         request_id = output['id']
         display("id " + request_id, options.quiet, "notarytool")
@@ -760,7 +760,7 @@ def get_notarization_state(request_id, build_info, options):
         'plist',
     ]
     add_authentication_options(cmd, build_info)
-    
+
     retcode, proc_stdout, proc_stderr = run_subprocess(cmd)
     if proc_stdout.startswith('Generated JWT'):
         proc_stdout = proc_stdout.split('\n',1)[1]

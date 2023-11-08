@@ -803,11 +803,9 @@ def notarization_done(state, sleep_time, options):
     else:
         display(
             "Notarization unsuccessful:\n"
-            "\tStatus: {}\n"
-            "\tStatus Code: {}\n"
-            "\tStatus Message: {}\n"
-            "\tLogFileURL: {}".format(
-                state['status'], state['code'], state['message'], state['log_url']
+            "\tStatus(id={}): {}\n"
+            "\tStatus Message: {}".format(
+                state['id'], state['status'], state['message']
             ),
             options.quiet,
         )

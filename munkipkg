@@ -706,7 +706,7 @@ def add_authentication_options(cmd, build_info):
         )
     else:
         raise MunkiPkgError(
-            "apple_id + team_id + password or keychain_profile"
+            "apple_id + team_id + password or keychain_profile "
             "must be specified in notarization_info."
         )
 

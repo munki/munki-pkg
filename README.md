@@ -301,10 +301,12 @@ You may notarize **SIGNED PACKAGES** as part of the build process by adding a `n
 ```xml
     <key>notarization_info</key>
     <dict>
-        <key>username</key>
+        <key>apple_id</key>
         <string>john.appleseed@apple.com</string>
         <key>password</key>
         <string>@keychain:AC_PASSWORD</string>
+        <key>team_id</key>
+        <string>ABCDEF12345</string>
         <key>asc_provider</key>
         <string>JohnAppleseed1XXXXXX8</string>
         <key>staple_timeout</key>
@@ -327,23 +329,64 @@ Keys/values of the `notarization_info` dictionary:
 
 | Key               | Type    | Required | Description |
 | ----------------- | ------- | -------- | ----------- |
-| username          | String  | Yes      | Login email address of your developer Apple ID |
+| apple_id          | String  | (see authentication) | Login email address of your developer Apple ID |
+| team_id           | String  | (see authentication) | The team identifier for the Developer Team, usually 10 alphanumeric characters |
 | password          | String  | (see authentication) | 2FA app specific password. |
-| api_key           | String  | (see authentication) | App Store Connect API access key. |
-| api_issuer        | String  | (see authentication) | App Store Connect API key issuer ID. |
+| keychain_profile  | String  | (see authentication) | App Store Connect API key issuer ID. |
 | asc_provider      | String  | No       | Only needed when a user account is associated with multiple providers |
 | primary_bundle_id | String  | No       | Defaults to `identifier`. Whether specified or not underscore characters are always automatically converted to hyphens since Apple notary service does not like underscores |
 | staple_timeout    | Integer | No       | See paragraph bellow |
 
 **Authentication**  
 
-To notarize the package you have to use Apple ID with access to App Store Connect. There are two possible authentication methods: App-specific password and API key. Either `password` or `api_key` + `api_issuer` keys(s) **must** be specified in the `notarization_info` dictionary. If you specify both `password` takes precedence.
+To notarize the package you have to use Apple ID with access to App Store Connect. There are two possible authentication methods: App-specific password and keychain profile. Either `apple_id`+`team_id`+`password` or `keychain_profile` keys(s) **must** be specified in the `notarization_info` dictionary. If you specify both `password` based takes precedence.
 
 **Using the password**  
 
 For information about the password and saving it to the login keychain see the web page [Customizing the Notarization Workflow](https://developer.apple.com/documentation/security/notarizing_your_app_before_distribution/customizing_the_notarization_workflow).
 
 If you configure `munki-pkg` to use the password from the login keychain user is going to be prompted to allow access to the password. You can authorize this once clicking *Allow* or permanently clicking *Always Allow*.
+
+**How to Setup Your Keychain for Notarization with `notarytool`**
+
+Dependency: `notarytool` is bundled with Xcode, so you need to have the latest version of Xcode installed and the command line tools.
+
+Run: 
+`/Applications/Xcode.app/Contents/Developer/usr/bin/notarytool store-credentials` 
+
+It will ask you for a profile name, use: `notarization_credentials` as that is what all our pkginfo files will have as the `keychain_profile` key in the munki-pkg project json file, as such:
+
+Skip the next question about App Store API.
+
+1. It will move to ask you for a Developer Apple ID email
+2. The password here is a unique app-specific password created in appleid.apple.com from the same Developer ID account.
+3. Enter your Team ID from the developer certificate.
+
+All your munkipkg json project files will need that notarization info added as such:
+
+```
+{
+    "postinstall_action": "none",
+    "suppress_bundle_relocation": true,
+    "name": "PackageName.pkg",
+    "distribution_style": true,
+    "install_location": "/path/to/payload/location/",
+    "version": "14.0",
+    "ownership": "recommended",
+    "identifier": "com.domain.PackageName",
+    "signing_info": {
+        "identity": "Developer ID Installer: Company Name (Team ID)",
+        "keychain": "/path/to/certificate/signing.keychain",
+        "timestamp": true
+    },
+    "notarization_info": {
+        "keychain_profile": "notarization_credentials"
+    }
+}
+```
+
+`munki-pkg` will now call the `keychain_profile` from the json to run as the credentials for the notarization.
+
 
 **Creating the API key**  
 
@@ -358,8 +401,8 @@ If you configure `munki-pkg` to use the password from the login keychain user is
 
 `munki-pkg` basically does following:
 
-1. Uploads the package to Apple notary service using `xcrun altool --notarize-app --primary-bundle-id "com.github.munki.pkg.munki-kickstart" --username "john.appleseed@apple.com" --password "@keychain:AC_PASSWORD" --file munki_kickstart.pkg`
-2. Checks periodically state of notarization process using `xcrun altool --notarization-info <UUID> --username "john.appleseed@apple.com" --password "@keychain:AC_PASSWORD"`
+1. Uploads the package to Apple notary service using `xcrun notarytool submit --output-format plist build/munki_kickstart.pkg --apple-id "john.appleseed@apple.com" --team-id ABCDEF12345 --password "@keychain:AC_PASSWORD"`
+2. Checks periodically state of notarization process using `xcrun notarytool info <UUID> --output-format plist --apple-id "john.appleseed@apple.com" --team-id ABCDEF12345 --password "@keychain:AC_PASSWORD"`
 3. If notarization was successful `munki-pkg` staples the package using `xcrun stapler staple munki_kickstart.pkg`
 
 There is a time delay between successful upload of a signed package to the notary service and notarization result from the service.

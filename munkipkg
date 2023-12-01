@@ -683,97 +683,89 @@ def get_primary_bundle_id(build_info):
 
 def add_authentication_options(cmd, build_info):
     '''Add --password or --apiKey + --apiIssuer options to the command'''
-    if 'password' in build_info['notarization_info']:
-        cmd.extend(
-            ['--password', build_info['notarization_info']['password']]
-        )
-    elif (
-          'api_key' in build_info['notarization_info'] and
-          'api_issuer' in build_info['notarization_info']
+    if (
+        'apple_id' in build_info['notarization_info'] and
+        'team_id' in build_info['notarization_info'] and
+        'password' in build_info['notarization_info']
     ):
         cmd.extend(
             [
-                '--apiKey',
-                build_info['notarization_info']['api_key'],
-                '--apiIssuer',
-                build_info['notarization_info']['api_issuer'],
+                '--apple-id', build_info['notarization_info']['apple_id'],
+                '--team-id', build_info['notarization_info']['team_id'],
+                '--password', build_info['notarization_info']['password']
+            ]
+        )
+    elif (
+          'keychain_profile' in build_info['notarization_info']
+    ):
+        cmd.extend(
+            [
+                '--keychain-profile',
+                build_info['notarization_info']['keychain_profile']
             ]
         )
     else:
         raise MunkiPkgError(
-            "password or api_key + api_issuer keys "
+            "apple_id + team_id + password or keychain_profile "
             "must be specified in notarization_info."
         )
 
 
 def upload_to_notary(build_info, options):
-    '''Use xcrun altool to upload the package to Apple notary service'''
-    if 'username' not in build_info['notarization_info']:
-        raise MunkiPkgError("notarization_info lacks username key.")
+    '''Use xcrun notarytool to upload the package to Apple notary service'''
 
     display("Uploading package to Apple notary service", options.quiet)
     cmd = [
         XCRUN,
-        'altool',
-        '--notarize-app',
-        '--primary-bundle-id',
-        get_primary_bundle_id(build_info),
-        '--username',
-        build_info['notarization_info']['username'],
+        'notarytool',
+        'submit',
         '--output-format',
-        'xml',
-        '--file',
+        'plist',
         os.path.join(build_info['build_dir'], build_info['name']),
     ]
-    if 'asc_provider' in build_info['notarization_info']:
-        cmd.extend(
-            ['--asc-provider', build_info['notarization_info']['asc_provider']]
-        )
     add_authentication_options(cmd, build_info)
 
     retcode, proc_stdout, proc_stderr = run_subprocess(cmd)
+    if retcode:
+        print("notarytool: " + proc_stderr, file=sys.stderr)
+        raise MunkiPkgError("Notarization upload failed.")
+
     if proc_stdout.startswith('Generated JWT'):
         proc_stdout = proc_stdout.split('\n',1)[1]
     try:
         output = readPlistFromString(proc_stdout.encode("UTF-8"))
     except ExpatError:
-        print(proc_stderr, file=sys.stderr)
-        raise MunkiPkgError("Notarization upload failed. Unable to run xcrun altool")
-
-    if retcode:
-        for product_error in output.get('product-errors', []):
-            print(
-                "altool: FAILURE " + product_error.get('message', 'UNKNOWN ERROR'),
-                file=sys.stderr
-            )
-        raise MunkiPkgError("Notarization failed")
+        print("notarytool: " + proc_stderr, file=sys.stderr)
+        raise MunkiPkgError("Notarization upload failed.")
 
     try:
-        request_uuid = output['notarization-upload']['RequestUUID']
-        display("RequestUUID " + request_uuid, options.quiet, "altool")
-        display("SUCCESS " + output['success-message'], options.quiet, "altool")
+        request_id = output['id']
+        display("id " + request_id, options.quiet, "notarytool")
+        display(output['message'], options.quiet, "notarytool")
     except KeyError:
-        raise MunkiPkgError("Unexpected output from altool")
+        raise MunkiPkgError("Unexpected output from notarytool")
 
-    return request_uuid
+    return request_id
 
 
-def get_notarization_state(request_uuid, build_info, options):
+def get_notarization_state(request_id, build_info, options):
     '''Checks for result of notarization process'''
     state = {}
     cmd = [
         XCRUN,
-        'altool',
-        '--notarization-info',
-        request_uuid,
-        '--username',
-        build_info['notarization_info']['username'],
+        'notarytool',
+        'info',
+        request_id,
         '--output-format',
-        'xml',
+        'plist',
     ]
     add_authentication_options(cmd, build_info)
 
     retcode, proc_stdout, proc_stderr = run_subprocess(cmd)
+    if retcode:
+        print("notarytool: " + proc_stderr, file=sys.stderr)
+        raise MunkiPkgError("Notarization check failed.")
+
     if proc_stdout.startswith('Generated JWT'):
         proc_stdout = proc_stdout.split('\n',1)[1]
 
@@ -781,26 +773,25 @@ def get_notarization_state(request_uuid, build_info, options):
         output = readPlistFromString(proc_stdout.encode("UTF-8"))
     except ExpatError:
         print(proc_stderr, file=sys.stderr)
-        raise MunkiPkgError("Notarization check failed. Unable to run xcrun altool")
-    if retcode or 'notarization-info' not in output:
-        print("altool: " + output.get('success-message', 'Unexpected response'))
-        print("altool: DEBUG output follows")
+        raise MunkiPkgError("Notarization check failed.")
+    if 'message' not in output:
+        print("notarytool: " + output.get('success-message', 'Unexpected response'))
+        print("notarytool: DEBUG output follows")
         print(output)
         state['status'] = 'Unknown'
     else:
-        state['log_url'] = output['notarization-info'].get('LogFileURL', '')
-        state['status'] = output['notarization-info'].get('Status', 'Unknown')
-        state['code'] = output['notarization-info'].get('Status Code', None)
-        state['message'] = output['notarization-info'].get('Status Message', '')
+        state['id'] = output.get('id', '')
+        state['status'] = output.get('status', 'Unknown')
+        state['message'] = output.get('message', '')
     return state
 
 
 def notarization_done(state, sleep_time, options):
     '''Evaluates whether notarization is still in progress'''
-    if state['status'] == 'success':
+    if state['status'] == 'Accepted':
         display("Notarization successful. {}".format(state['message']), options.quiet)
         return True
-    elif state['status'] in ['in progress', 'Unknown']:
+    elif state['status'] in ['In Progress', 'Unknown']:
         display(
             "Notarization state: {}. Trying again in {} seconds".format(
                 state['status'],
@@ -812,18 +803,16 @@ def notarization_done(state, sleep_time, options):
     else:
         display(
             "Notarization unsuccessful:\n"
-            "\tStatus: {}\n"
-            "\tStatus Code: {}\n"
-            "\tStatus Message: {}\n"
-            "\tLogFileURL: {}".format(
-                state['status'], state['code'], state['message'], state['log_url']
+            "\tStatus(id={}): {}\n"
+            "\tStatus Message: {}".format(
+                state['id'], state['status'], state['message']
             ),
             options.quiet,
         )
         raise MunkiPkgError("Notarization failed")
 
 
-def wait_for_notarization(request_uuid, build_info, options):
+def wait_for_notarization(request_id, build_info, options):
     '''Checks notarization state until it is done or we exceed the timeout value'''
     display("Getting notarization state", options.quiet)
     timeout = build_info['notarization_info'].get('staple_timeout', STAPLE_TIMEOUT)
@@ -835,7 +824,7 @@ def wait_for_notarization(request_uuid, build_info, options):
         counter += sleep_time
         sleep_time += STAPLE_SLEEP
 
-        state = get_notarization_state(request_uuid, build_info, options)
+        state = get_notarization_state(request_id, build_info, options)
 
         if notarization_done(state, sleep_time, options):
             return True
@@ -931,9 +920,9 @@ def build(project_dir, options):
         # notarize the pkg
         if 'notarization_info' in build_info and not options.skip_notarization:
             try:
-                request_uuid = upload_to_notary(build_info, options)
+                request_id = upload_to_notary(build_info, options)
                 if not options.skip_stapling and wait_for_notarization(
-                    request_uuid, build_info, options
+                    request_id, build_info, options
                 ):
                     staple(build_info, options)
             except MunkiPkgError as err:

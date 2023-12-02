@@ -41,7 +41,6 @@ munkipkg builds flat packages using Apple's `pkgbuild` and `productbuild` tools.
 
 munkipkg builds packages from a "package project directory". At its simplest, a package project directory is a directory containing a "payload" directory, which itself contains the files to be packaged. More typically, the directory also contains a "build-info.plist" file containing specific settings for the build. The package project directory may also contain a "scripts" directory containing any scripts (and, optionally, additional files used by the scripts) to be included in the package.
 
-
 ### Package project directory layout
 ```
 project_dir/
@@ -68,7 +67,6 @@ Another way to create a package project is to import an existing package:
 
 ...will create a new package project directory named "Foo" in the current working directory, with payload, scripts and build-info extracted from foo.pkg.
 Complex or non-standard packages may not be extracted with 100% fidelity, and not all package formats are supported. Specifically, metapackages are not supported, and distribution packages containing multiple sub-packages are not supported. In these cases, consider importing the individual sub-packages.
-
 
 ### Building a package
 
@@ -186,7 +184,7 @@ String. One of "recommended", "preserve", or "preserve-other". Defaults to "reco
 String. One of "none", "logout", or "restart". Defaults to "none".
 
 **preserve_xattr**  
- Boolean: true or false. Defaults to false. Setting this to true would preserve extended attributes, like codesigned flat files (e.g. script files), amongst other xattr's such as the apple quarantine warning (com.apple.quarantine).
+Boolean: true or false. Defaults to false. Setting this to true would preserve extended attributes, like codesigned flat files (e.g. script files), amongst other xattr's such as the apple quarantine warning (com.apple.quarantine).
 
 **product id**  
 Optional. String. Sets the value of the "product id" attribute in a distribution-style package's Distribution file. If this is not defined, the value for `identifier` (the package identifier) will be used instead.
@@ -210,13 +208,11 @@ Dictionary of notarization options. See below.
 
 `munkipkg` creates its packages inside the build directory. A build directory is created within the project directory if one doesn't exist at build time.
 
-
 ### Scripts directory
 
 The scripts folder contains scripts to be included as part of the package.
 
 munkipkg makes use of `pkgbuild`. Therefore the "main" scripts must be named either "preinstall" or "postinstall" (with no extensions) and must have their execute bit set. Other scripts can be called by the preinstall or postinstall scripts, but only those two scripts will be automatically called during package installation.
-
 
 ### Payload directory
 
@@ -231,7 +227,6 @@ payload/
                 bar
 ```
 
-
 ### Payload-free packages
 
 You can use this tool to build payload-free packages in two variants.
@@ -239,7 +234,6 @@ You can use this tool to build payload-free packages in two variants.
 If there is no payload folder at all, `pkgbuild` is called with the `--nopayload` option. The resulting package will not leave a receipt when installed.
 
 If the payload folder exists, but is empty, you'll get a "pseudo-payload-free" package. No files will be installed, but a receipt will be left. This is often the more useful option if you need to track if the package has been installed on machines you manage.
-
 
 ### Package signing
 
@@ -379,7 +373,6 @@ All your munkipkg json project files will need that notarization info added as s
 
 `munki-pkg` will now call the `keychain_profile` from the json to run as the credentials for the notarization.
 
-
 **Creating the API key**  
 
 1. Log into [App Store Connect](https://appstoreconnect.apple.com) using developer Apple ID with access to API keys.
@@ -400,7 +393,6 @@ All your munkipkg json project files will need that notarization info added as s
 There is a time delay between successful upload of a signed package to the notary service and notarization result from the service.
 `munki-pkg` checks multiple times if notarization process is done. There is sleep period between each try. Sleep period starts at 5 seconds and increases by increments of 5 (5s, 10s, 10s, etc.).
 With `staple_timeout` parameter you can specify timeout in seconds (**default: 300 seconds**) after which `munki-pkg` gives up.
-
 
 ### Additional options
 
@@ -429,7 +421,6 @@ Causes munkipkg to suppress normal output messages. Errors will still be printed
 
 `--help`, `--version`  
 Prints help message and tool version, respectively.
-
 
 ## Important git notes
 

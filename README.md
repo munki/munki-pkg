@@ -24,8 +24,8 @@ Some options for providing an appropriate Python:
 
 1) If you also use Munki, use Munki's bundled Python. You could make a symlink at /usr/local/bin/python3 pointing to /usr/local/munki/munki-python (this assumes /usr/local/bin is in your PATH, which it is by default. You could create symlink in any writable directory in your PATH if it differs)
 2) Install Python from https://www.python.org. You might still need to create a symlink somewhere so that `/usr/bin/env python3` executes the Python you installed.
-3) Install Apple's Python 3 by running `/usr/bin/python3` and accepting the prompt to install Python (if Xcode or the Command line development tools are not already present). Again you might need to create a symlink so that `/usr/bin/env python` executes the Python you installed.
-4) There are other ways to install Python, inlcuding Homebrew (https://brew.sh), macadmins-python (https://github.com/macadmins/python), my relocatable-python tool (https://github.com/gregneagle/relocatable-python), and more.
+3) Install Apple's Python 3 by running `/usr/bin/python3` and accepting the prompt to install Python (if Xcode or the Xcode Command Line Tools are not already present).
+4) There are other ways to install Python, including Homebrew (https://brew.sh), macadmins-python (https://github.com/macadmins/python), my relocatable-python tool (https://github.com/gregneagle/relocatable-python), etc.
 
 If you don't want to create a symlink or alter your PATH so that `/usr/bin/env python3` executes an appropriate Python for munkipkg, you can just call munkipkg _from_ the Python of your choice: `python3 /path/to/munkipkg [options]`
 
@@ -151,7 +151,7 @@ If both build-info.plist and build-info.yaml are present, the plist file will be
 
 ##### JSON and YAML formatting note
 
-Note in the JSON and YAML examples that the version "number" is wrapped in quotes. This is important -- XML plists have explict type tags and the correct type for a version "number" is `string`. JSON and YAML infer a value's type based on formatting. Without quotes wrapping the value, `1.0` would be interpreted as a floating point number, and not a string, potentially causing an error at build time. This issue might affect future build-info keys supported by `munkipkg`, so take care.
+Note in the JSON and YAML examples that the version "number" is wrapped in quotes. This is important -- XML plists have explicit type tags and the correct type for a version "number" is `string`. JSON and YAML infer a value's type based on formatting. Without quotes wrapping the value, `1.0` would be interpreted as a floating point number, and not a string, potentially causing an error at build time. This issue might affect future build-info keys supported by `munkipkg`, so take care.
 
 #### build-info keys
 

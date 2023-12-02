@@ -2,13 +2,11 @@
 
 ## Introduction
 
-munkipkg is a simple tool for building packages in a consistent, repeatable manner from source files and scripts in a project directory.
+munkipkg is a tool for building packages in a consistent, repeatable manner from source files and scripts in a project directory.
 
 While you can use munkipkg to generate packages for use with Munki (https://www.munki.org/munki/), the packages munkipkg builds are just normal Apple installer packages usable anywhere you can use Apple installer packages.
 
 Files, scripts, and metadata are stored in a way that is easy to track and manage using a version control system like git.
-
-Another tool that solves a similar problem is Joe Block's **The Luggage** (https://github.com/unixorn/luggage). If you are happily using The Luggage, you can probably safely ignore this tool.
 
 **autopkg** (https://github.com/autopkg/autopkg) is another tool that has some overlap here. It's definitely possible to use autopkg to build packages from files and scripts on your local disk. See https://managingosx.wordpress.com/2015/07/30/using-autopkg-for-general-purpose-packaging/ and https://github.com/gregneagle/autopkg-packaging-demo for examples on how to do this.
 
@@ -25,13 +23,9 @@ Some options for providing an appropriate Python:
 1) If you also use Munki, use Munki's bundled Python. You could make a symlink at /usr/local/bin/python3 pointing to /usr/local/munki/munki-python (this assumes /usr/local/bin is in your PATH, which it is by default. You could create symlink in any writable directory in your PATH if it differs)
 2) Install Python from https://www.python.org. You might still need to create a symlink somewhere so that `/usr/bin/env python3` executes the Python you installed.
 3) Install Apple's Python 3 by running `/usr/bin/python3` and accepting the prompt to install Python (if Xcode or the Xcode Command Line Tools are not already present).
-4) There are other ways to install Python, including Homebrew (https://brew.sh), macadmins-python (https://github.com/macadmins/python), my relocatable-python tool (https://github.com/gregneagle/relocatable-python), etc.
+4) There are other ways to install Python, including Homebrew (https://brew.sh), macadmins-python (https://github.com/macadmins/python), relocatable-python tool (https://github.com/gregneagle/relocatable-python), etc.
 
 If you don't want to create a symlink or alter your PATH so that `/usr/bin/env python3` executes an appropriate Python for munkipkg, you can just call munkipkg _from_ the Python of your choice: `python3 /path/to/munkipkg [options]`
-
-You might ask "Why not change the shebang to `#!/usr/bin/env python3` or even `#!/usr/bin/python3`? That could break many current users of the tool who _haven't_ upgraded to macOS 12.3 and don't have Xcode and/or the Command line development tools installed. If/when you upgrade to macOS 12.3, you'll need to take some action anyway. No need to punish everyone else.
-
-Why not change the shebang to `#!/usr/local/munki/munki-python`? That would then cause munkipkg to require the install of the Munki tools. Not everyone who uses munkipkg uses Munki, as hard as that might be to believe.
 
 ## Basic operation
 

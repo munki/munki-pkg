@@ -31,7 +31,7 @@ If you don't want to create a symlink or alter your PATH so that `/usr/bin/env p
 
 You might ask "Why not change the shebang to `#!/usr/bin/env python3` or even `#!/usr/bin/python3`? That could break many current users of the tool who _haven't_ upgraded to macOS 12.3 and don't have Xcode and/or the Command line development tools installed. If/when you upgrade to macOS 12.3, you'll need to take some action anyway. No need to punish everyone else.
 
-Why not change the shebang to `#!/usr/local/munki/munki-python`? That would then cause munki-pkg to require the install of the Munki tools. Not everyone who uses munkipkg uses Munki, as hard as that might be to believe.
+Why not change the shebang to `#!/usr/local/munki/munki-python`? That would then cause munkipkg to require the install of the Munki tools. Not everyone who uses munkipkg uses Munki, as hard as that might be to believe.
 
 ## Basic operation
 
@@ -331,7 +331,7 @@ To notarize the package you have to use Apple ID with access to App Store Connec
 
 For information about the password and saving it to the login keychain see the web page [Customizing the Notarization Workflow](https://developer.apple.com/documentation/security/notarizing_your_app_before_distribution/customizing_the_notarization_workflow).
 
-If you configure `munki-pkg` to use the password from the login keychain user is going to be prompted to allow access to the password. You can authorize this once clicking *Allow* or permanently clicking *Always Allow*.
+If you configure `munkipkg` to use the password from the login keychain user is going to be prompted to allow access to the password. You can authorize this once clicking *Allow* or permanently clicking *Always Allow*.
 
 **How to Setup Your Keychain for Notarization with `notarytool`**
 
@@ -340,7 +340,7 @@ Dependency: `notarytool` is bundled with Xcode, so you need to have the latest v
 Run: 
 `/Applications/Xcode.app/Contents/Developer/usr/bin/notarytool store-credentials` 
 
-It will ask you for a profile name, use: `notarization_credentials` as that is what all our pkginfo files will have as the `keychain_profile` key in the munki-pkg project json file, as such:
+It will ask you for a profile name, use: `notarization_credentials` as that is what all our pkginfo files will have as the `keychain_profile` key in the munkipkg project json file, as such:
 
 Skip the next question about App Store API.
 
@@ -371,7 +371,7 @@ All your munkipkg json project files will need that notarization info added as s
 }
 ```
 
-`munki-pkg` will now call the `keychain_profile` from the json to run as the credentials for the notarization.
+`munkipkg` will now call the `keychain_profile` from the json to run as the credentials for the notarization.
 
 **Creating the API key**  
 
@@ -384,15 +384,15 @@ All your munkipkg json project files will need that notarization info added as s
 
 **About stapling**  
 
-`munki-pkg` basically does following:
+`munkipkg` basically does following:
 
 1. Uploads the package to Apple notary service using `xcrun notarytool submit --output-format plist build/munki_kickstart.pkg --apple-id "john.appleseed@apple.com" --team-id ABCDEF12345 --password "@keychain:AC_PASSWORD"`
 2. Checks periodically state of notarization process using `xcrun notarytool info <UUID> --output-format plist --apple-id "john.appleseed@apple.com" --team-id ABCDEF12345 --password "@keychain:AC_PASSWORD"`
-3. If notarization was successful `munki-pkg` staples the package using `xcrun stapler staple munki_kickstart.pkg`
+3. If notarization was successful `munkipkg` staples the package using `xcrun stapler staple munki_kickstart.pkg`
 
 There is a time delay between successful upload of a signed package to the notary service and notarization result from the service.
-`munki-pkg` checks multiple times if notarization process is done. There is sleep period between each try. Sleep period starts at 5 seconds and increases by increments of 5 (5s, 10s, 10s, etc.).
-With `staple_timeout` parameter you can specify timeout in seconds (**default: 300 seconds**) after which `munki-pkg` gives up.
+`munkipkg` checks multiple times if notarization process is done. There is sleep period between each try. Sleep period starts at 5 seconds and increases by increments of 5 (5s, 10s, 10s, etc.).
+With `staple_timeout` parameter you can specify timeout in seconds (**default: 300 seconds**) after which `munkipkg` gives up.
 
 ### Additional options
 

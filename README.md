@@ -20,12 +20,12 @@ In macOS 12.3, Apple removed the Python 2.7 install. Out-of-the-box, there is no
 
 Some options for providing an appropriate Python:
 
-1) If you also use Munki, use Munki's bundled Python. You could make a symlink at /usr/local/bin/python3 pointing to /usr/local/munki/munki-python (this assumes /usr/local/bin is in your PATH, which it is by default. You could create symlink in any writable directory in your PATH if it differs)
+1) If you also use Munki, use Munki's bundled Python. You could make a symlink at /usr/local/bin/python3 pointing to `/usr/local/munki/munki-python` (this assumes `/usr/local/bin` is in your `PATH`, which it is by default. You could create symlink in any writable directory in your `PATH` if it differs)
 2) Install Python from https://www.python.org. You might still need to create a symlink somewhere so that `/usr/bin/env python3` executes the Python you installed.
 3) Install Apple's Python 3 by running `/usr/bin/python3` and accepting the prompt to install Python (if Xcode or the Xcode Command Line Tools are not already present).
 4) There are other ways to install Python, including Homebrew (https://brew.sh), macadmins-python (https://github.com/macadmins/python), relocatable-python tool (https://github.com/gregneagle/relocatable-python), etc.
 
-If you don't want to create a symlink or alter your PATH so that `/usr/bin/env python3` executes an appropriate Python for munkipkg, you can just call munkipkg _from_ the Python of your choice: `python3 /path/to/munkipkg [options]`
+If you don't want to create a symlink or alter your PATH so that `/usr/bin/env python3` executes an appropriate Python for munkipkg, you can just call munkipkg _from_ the Python of your choice, eg: `/path/to/your/python3 /path/to/munkipkg [options]`
 
 ## Basic operation
 
@@ -344,7 +344,7 @@ Skip the next question about App Store API.
 
 All your munkipkg json project files will need that notarization info added as such:
 
-```
+```json
 {
     "postinstall_action": "none",
     "suppress_bundle_relocation": true,

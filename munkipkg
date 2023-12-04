@@ -617,11 +617,11 @@ def build_pkg(build_info, options):
             cmd.extend(['--install-location', build_info['install_location']])
     else:
         cmd.extend(['--nopayload'])
-    if build_info['compression']:
+    if 'compression' in build_info:
         cmd.extend(['--compression', build_info['compression']])
     if build_info['component_plist']:
         cmd.extend(['--component-plist', build_info['component_plist']])
-    if build_info['min-os-version']:
+    if 'min-os-version' in build_info:
         cmd.extend(['--min-os-version', build_info['min-os-version']])
     if build_info['scripts']:
         cmd.extend(['--scripts', build_info['scripts']])

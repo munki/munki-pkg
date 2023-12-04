@@ -2,13 +2,11 @@
 
 ## Introduction
 
-munkipkg is a simple tool for building packages in a consistent, repeatable manner from source files and scripts in a project directory.
+munkipkg is a tool for building packages in a consistent, repeatable manner from source files and scripts in a project directory.
 
 While you can use munkipkg to generate packages for use with Munki (https://www.munki.org/munki/), the packages munkipkg builds are just normal Apple installer packages usable anywhere you can use Apple installer packages.
 
 Files, scripts, and metadata are stored in a way that is easy to track and manage using a version control system like git.
-
-Another tool that solves a similar problem is Joe Block's **The Luggage** (https://github.com/unixorn/luggage). If you are happily using The Luggage, you can probably safely ignore this tool.
 
 **autopkg** (https://github.com/autopkg/autopkg) is another tool that has some overlap here. It's definitely possible to use autopkg to build packages from files and scripts on your local disk. See https://managingosx.wordpress.com/2015/07/30/using-autopkg-for-general-purpose-packaging/ and https://github.com/gregneagle/autopkg-packaging-demo for examples on how to do this.
 
@@ -18,20 +16,16 @@ So why consider using munkipkg? It's simple and self-contained, with no external
 
 munkipkg requires Python. It also uses several command-line tools available on macOS. There is no support for running these on Windows or Linux.
 
-In macOS 12.3, Apple removed the Python 2.7 install. Out-of-the-box, there is no Python installed. You'll need to provide your own Python to use munkipkg. It should run under Python 2.7, and Python 3.6-3.9 without issue.
+In macOS 12.3, Apple removed the Python 2.7 install. Out-of-the-box, there is no Python installed. You'll need to provide your own Python3 to use munkipkg.
 
 Some options for providing an appropriate Python:
 
-1) If you also use Munki, use Munki's bundled Python. You could make a symlink at /usr/local/bin/python pointing to /usr/local/munki/munki-python (this assumes /usr/local/bin is in your PATH, which it is by default. You could create symlink in any writable directory in your PATH if it differs)
-2) Install Python from https://www.python.org. You might still need to create a symlink somewhere so that `/usr/bin/env python` executes the Python you installed.
-3) Install Apple's Python 3 by running `/usr/bin/python3` and accepting the prompt to install Python (if Xcode or the Command line development tools are not already present). Again you might need to create a symlink so that `/usr/bin/env python` executes the Python you installed.
-4) There are other ways to install Python, inlcuding Homebrew (https://brew.sh), macadmins-python (https://github.com/macadmins/python), my relocatable-python tool (https://github.com/gregneagle/relocatable-python), and more.
+1) If you also use Munki, use Munki's bundled Python. You could make a symlink at /usr/local/bin/python3 pointing to `/usr/local/munki/munki-python` (this assumes `/usr/local/bin` is in your `PATH`, which it is by default. You could create symlink in any writable directory in your `PATH` if it differs)
+2) Install Python from https://www.python.org. You might still need to create a symlink somewhere so that `/usr/bin/env python3` executes the Python you installed.
+3) Install Apple's Python 3 by running `/usr/bin/python3` and accepting the prompt to install Python (if Xcode or the Xcode Command Line Tools are not already present).
+4) There are other ways to install Python, including Homebrew (https://brew.sh), macadmins-python (https://github.com/macadmins/python), relocatable-python tool (https://github.com/gregneagle/relocatable-python), etc.
 
-If you don't want to create a symlink or alter your PATH so that `/usr/bin/env python` executes an appropriate Python for munkipkg, you can just call munkipkg _from_ the Python of your choice: `python3 /path/to/munkipkg [options]`
-
-You might ask "Why not change the shebang to `#!/usr/bin/env python3` or even `#!/usr/bin/python3`? That could break many current users of the tool who _haven't_ upgraded to macOS 12.3 and don't have Xcode and/or the Command line development tools installed. If/when you upgrade to macOS 12.3, you'll need to take some action anyway. No need to punish everyone else.
-
-Why not change the shebang to `#!/usr/local/munki/munki-python`? That would then cause munki-pkg to require the install of the Munki tools. Not everyone who uses munkipkg uses Munki, as hard as that might be to believe.
+If you don't want to create a symlink or alter your PATH so that `/usr/bin/env python3` executes an appropriate Python for munkipkg, you can just call munkipkg _from_ the Python of your choice, eg: `/path/to/your/python3 /path/to/munkipkg [options]`
 
 ## Basic operation
 
@@ -40,7 +34,6 @@ munkipkg builds flat packages using Apple's `pkgbuild` and `productbuild` tools.
 ### Package project directories
 
 munkipkg builds packages from a "package project directory". At its simplest, a package project directory is a directory containing a "payload" directory, which itself contains the files to be packaged. More typically, the directory also contains a "build-info.plist" file containing specific settings for the build. The package project directory may also contain a "scripts" directory containing any scripts (and, optionally, additional files used by the scripts) to be included in the package.
-
 
 ### Package project directory layout
 ```
@@ -68,7 +61,6 @@ Another way to create a package project is to import an existing package:
 
 ...will create a new package project directory named "Foo" in the current working directory, with payload, scripts and build-info extracted from foo.pkg.
 Complex or non-standard packages may not be extracted with 100% fidelity, and not all package formats are supported. Specifically, metapackages are not supported, and distribution packages containing multiple sub-packages are not supported. In these cases, consider importing the individual sub-packages.
-
 
 ### Building a package
 
@@ -153,7 +145,7 @@ If both build-info.plist and build-info.yaml are present, the plist file will be
 
 ##### JSON and YAML formatting note
 
-Note in the JSON and YAML examples that the version "number" is wrapped in quotes. This is important -- XML plists have explict type tags and the correct type for a version "number" is `string`. JSON and YAML infer a value's type based on formatting. Without quotes wrapping the value, `1.0` would be interpreted as a floating point number, and not a string, potentially causing an error at build time. This issue might affect future build-info keys supported by `munkipkg`, so take care.
+Note in the JSON and YAML examples that the version "number" is wrapped in quotes. This is important -- XML plists have explicit type tags and the correct type for a version "number" is `string`. JSON and YAML infer a value's type based on formatting. Without quotes wrapping the value, `1.0` would be interpreted as a floating point number, and not a string, potentially causing an error at build time. This issue might affect future build-info keys supported by `munkipkg`, so take care.
 
 #### build-info keys
 
@@ -186,7 +178,7 @@ String. One of "recommended", "preserve", or "preserve-other". Defaults to "reco
 String. One of "none", "logout", or "restart". Defaults to "none".
 
 **preserve_xattr**  
- Boolean: true or false. Defaults to false. Setting this to true would preserve extended attributes, like codesigned flat files (e.g. script files), amongst other xattr's such as the apple quarantine warning (com.apple.quarantine).
+Boolean: true or false. Defaults to false. Setting this to true would preserve extended attributes, like codesigned flat files (e.g. script files), amongst other xattr's such as the apple quarantine warning (com.apple.quarantine).
 
 **product id**  
 Optional. String. Sets the value of the "product id" attribute in a distribution-style package's Distribution file. If this is not defined, the value for `identifier` (the package identifier) will be used instead.
@@ -210,13 +202,11 @@ Dictionary of notarization options. See below.
 
 `munkipkg` creates its packages inside the build directory. A build directory is created within the project directory if one doesn't exist at build time.
 
-
 ### Scripts directory
 
 The scripts folder contains scripts to be included as part of the package.
 
 munkipkg makes use of `pkgbuild`. Therefore the "main" scripts must be named either "preinstall" or "postinstall" (with no extensions) and must have their execute bit set. Other scripts can be called by the preinstall or postinstall scripts, but only those two scripts will be automatically called during package installation.
-
 
 ### Payload directory
 
@@ -231,7 +221,6 @@ payload/
                 bar
 ```
 
-
 ### Payload-free packages
 
 You can use this tool to build payload-free packages in two variants.
@@ -239,7 +228,6 @@ You can use this tool to build payload-free packages in two variants.
 If there is no payload folder at all, `pkgbuild` is called with the `--nopayload` option. The resulting package will not leave a receipt when installed.
 
 If the payload folder exists, but is empty, you'll get a "pseudo-payload-free" package. No files will be installed, but a receipt will be left. This is often the more useful option if you need to track if the package has been installed on machines you manage.
-
 
 ### Package signing
 
@@ -284,7 +272,7 @@ See the **SIGNED PACKAGES** section of the man page for `pkgbuild` or the **SIGN
 **Important notes**:
 
 - Please read the [Customizing the Notarization Workflow](https://developer.apple.com/documentation/security/notarizing_your_app_before_distribution/customizing_the_notarization_workflow) web page before you start notarizing your packages.
-- Xcode 10 (or newer) is **required**.  If you have more than one version of Xcode installed on your Mac, be sure to use the xcode-select utility to choose the appropriate version: `sudo xcode-select -s /path/to/Xcode10.app`.
+- Xcode 13 (or newer) is **required**.  If you have more than one version of Xcode installed on your Mac, be sure to use the xcode-select utility to choose the appropriate version: `sudo xcode-select -s /path/to/Xcode13.app`.
 - Unproxied network access to the Apple infrastructure (Usually `17.0.0.0/8` network) is required.
 - Notarization tool tries to notarize not only the package but also the package payload. All code in the payload (including but not limited to app bundles, frameworks, kernel extensions) needs to be properly signed with the hardened runtime restrictions in order to be notarized. Please read Apple Developer documentation for more information.
 
@@ -337,7 +325,7 @@ To notarize the package you have to use Apple ID with access to App Store Connec
 
 For information about the password and saving it to the login keychain see the web page [Customizing the Notarization Workflow](https://developer.apple.com/documentation/security/notarizing_your_app_before_distribution/customizing_the_notarization_workflow).
 
-If you configure `munki-pkg` to use the password from the login keychain user is going to be prompted to allow access to the password. You can authorize this once clicking *Allow* or permanently clicking *Always Allow*.
+If you configure `munkipkg` to use the password from the login keychain user is going to be prompted to allow access to the password. You can authorize this once clicking *Allow* or permanently clicking *Always Allow*.
 
 **How to Setup Your Keychain for Notarization with `notarytool`**
 
@@ -346,7 +334,7 @@ Dependency: `notarytool` is bundled with Xcode, so you need to have the latest v
 Run: 
 `/Applications/Xcode.app/Contents/Developer/usr/bin/notarytool store-credentials` 
 
-It will ask you for a profile name, use: `notarization_credentials` as that is what all our pkginfo files will have as the `keychain_profile` key in the munki-pkg project json file, as such:
+It will ask you for a profile name, use: `notarization_credentials` as that is what all our pkginfo files will have as the `keychain_profile` key in the munkipkg project json file, as such:
 
 Skip the next question about App Store API.
 
@@ -356,7 +344,7 @@ Skip the next question about App Store API.
 
 All your munkipkg json project files will need that notarization info added as such:
 
-```
+```json
 {
     "postinstall_action": "none",
     "suppress_bundle_relocation": true,
@@ -377,8 +365,7 @@ All your munkipkg json project files will need that notarization info added as s
 }
 ```
 
-`munki-pkg` will now call the `keychain_profile` from the json to run as the credentials for the notarization.
-
+`munkipkg` will now call the `keychain_profile` from the json to run as the credentials for the notarization.
 
 **Creating the API key**  
 
@@ -391,16 +378,15 @@ All your munkipkg json project files will need that notarization info added as s
 
 **About stapling**  
 
-`munki-pkg` basically does following:
+`munkipkg` basically does following:
 
 1. Uploads the package to Apple notary service using `xcrun notarytool submit --output-format plist build/munki_kickstart.pkg --apple-id "john.appleseed@apple.com" --team-id ABCDEF12345 --password "@keychain:AC_PASSWORD"`
 2. Checks periodically state of notarization process using `xcrun notarytool info <UUID> --output-format plist --apple-id "john.appleseed@apple.com" --team-id ABCDEF12345 --password "@keychain:AC_PASSWORD"`
-3. If notarization was successful `munki-pkg` staples the package using `xcrun stapler staple munki_kickstart.pkg`
+3. If notarization was successful `munkipkg` staples the package using `xcrun stapler staple munki_kickstart.pkg`
 
 There is a time delay between successful upload of a signed package to the notary service and notarization result from the service.
-`munki-pkg` checks multiple times if notarization process is done. There is sleep period between each try. Sleep period starts at 5 seconds and increases by increments of 5 (5s, 10s, 10s, etc.).
-With `staple_timeout` parameter you can specify timeout in seconds (**default: 300 seconds**) after which `munki-pkg` gives up.
-
+`munkipkg` checks multiple times if notarization process is done. There is sleep period between each try. Sleep period starts at 5 seconds and increases by increments of 5 (5s, 10s, 10s, etc.).
+With `staple_timeout` parameter you can specify timeout in seconds (**default: 300 seconds**) after which `munkipkg` gives up.
 
 ### Additional options
 
@@ -429,7 +415,6 @@ Causes munkipkg to suppress normal output messages. Errors will still be printed
 
 `--help`, `--version`  
 Prints help message and tool version, respectively.
-
 
 ## Important git notes
 

@@ -1015,10 +1015,10 @@ def convert_info_plist(pkg_path, project_dir, options):
     build_info['install_location'] = info.get('IFPkgFlagDefaultLocation') or '/'
     build_info['postinstall_action'] = 'none'
     if (info.get('IFPkgFlagRestartAction') in
-            ['RequireRestart', 'RecommendRestart']):
+            ['RequiredRestart', 'RecommendedRestart']):
         build_info['postinstall_action'] = 'restart'
     if (info.get('IFPkgFlagRestartAction') in
-            ['RequireLogout', 'RecommendLogout']):
+            ['RequiredLogout', 'RecommendedLogout']):
         build_info['postinstall_action'] = 'logout'
     build_info['name'] = os.path.basename(pkg_path)
     if non_recommended_permissions_in_bom(project_dir):

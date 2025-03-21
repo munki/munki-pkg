@@ -205,7 +205,7 @@ String. One of "latest" or "legacy". When creating pkg files on macOS 12 or high
 **min-os-version**  
 String. Numeric representation of the target OS's MAJOR.MINOR versions. Eg "10.5", "10.10", "12.0", etc
 
-**large-payload** 
+**large-payload**  
 Boolean. If `large-payload` is set to `true` the `--large-payload` option will be used when building the package.  This option requires that `min-os-version` be set to "12.0" or higher.  Defaults to False
 
 ### Build directory

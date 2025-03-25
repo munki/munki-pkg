@@ -280,6 +280,7 @@ def get_build_info(project_dir, options):
         'ownership',
         'install_location',
         'min-os-version',
+        'large-payload',
         'postinstall_action',
         'preserve_xattr',
         'suppress_bundle_relocation',
@@ -623,6 +624,9 @@ def build_pkg(build_info, options):
         cmd.extend(['--component-plist', build_info['component_plist']])
     if 'min-os-version' in build_info:
         cmd.extend(['--min-os-version', build_info['min-os-version']])
+    if 'large-payload' in build_info:
+        if build_info['large-payload']:
+            cmd.append('--large-payload')
     if build_info['scripts']:
         cmd.extend(['--scripts', build_info['scripts']])
     if options.quiet:

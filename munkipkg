@@ -418,7 +418,7 @@ def sync_from_bom_info(project_dir, options):
                     display("Creating %s with mode %s"
                             % (payload_path, oct(desired_mode)),
                             options.quiet)
-                    os.mkdir(payload_path, desired_mode)
+                    os.makedirs(payload_path, desired_mode)
                     changes_made += 1
                     continue
                 else:

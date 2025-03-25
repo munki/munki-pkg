@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "munkipkg"
+dynamic = ["version"]
+description = 'A tool for making packages from projects that can be easily managed in a version control system like git.'
+readme = "README.md"
+requires-python = ">=3.6"
+license-files = { paths = ["LICENSE.md"] }
+keywords = ["munki", "pkg"]
+authors = [{ name = "Greg Neagle", email = "gregneagle@mac.com" }]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.6",
+  "Programming Language :: Python :: 3.7",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Environment :: MacOS X",
+  "Operating System :: MacOS",
+  "Intended Audience :: System Administrators",
+]
+dependencies = ["PyYAML>=3.11"]
+
+[project.urls]
+Documentation = "https://github.com/munki/munki-pkg/blob/main/README.md"
+Issues = "https://github.com/munki/munki-pkg/issues"
+Source = "https://github.com/munki/munki-pkg"
+
+[project.scripts]
+munkipkg = "munkipkg:main"
+
+[tool.hatch.version]
+path = "munkipkg"
+
+[tool.hatch.build]
+exclude = [
+  "munki_kickstart",
+  "SuppressSetupAssistant",
+  "TurnOffBluetooth",
+  "requirements.txt",
+]
+
+[tool.hatch.build.force-include]
+"munkipkg" = "munkipkg.py"

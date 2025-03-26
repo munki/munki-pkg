@@ -423,6 +423,9 @@ This option causes munkipkg to read the Bom.txt file, and use its information to
 `--quiet`  
 Causes munkipkg to suppress normal output messages. Errors will still be printed to stderr.
 
+`--force`
+If the target directory on --create already exists, force the creation of the project directory folders in this directory. This is useful if you have an existing directory (for example an empty git repository) and want to create the munkipkg folders in it.
+
 `--help`, `--version`  
 Prints help message and tool version, respectively.
 

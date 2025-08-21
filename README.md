@@ -323,6 +323,7 @@ Keys/values of the `notarization_info` dictionary:
 | team_id           | String  | (see authentication) | The team identifier for the Developer Team, usually 10 alphanumeric characters |
 | password          | String  | (see authentication) | 2FA app specific password. |
 | keychain_profile  | String  | (see authentication) | App Store Connect API key issuer ID. |
+| keychain          | String  | No       | Keychain file containing `keychain_profile`. |
 | asc_provider      | String  | No       | Only needed when a user account is associated with multiple providers |
 | primary_bundle_id | String  | No       | Defaults to `identifier`. Whether specified or not underscore characters are always automatically converted to hyphens since Apple notary service does not like underscores |
 | staple_timeout    | Integer | No       | See paragraph bellow |

@@ -715,6 +715,13 @@ def add_authentication_options(cmd, build_info):
                 build_info['notarization_info']['keychain_profile']
             ]
         )
+        if 'keychain' in build_info['notarization_info']:
+            cmd.extend(
+                [
+                    '--keychain',
+                    build_info['notarization_info']['keychain']
+                ]
+            )
     else:
         raise MunkiPkgError(
             "apple_id + team_id + password or keychain_profile "

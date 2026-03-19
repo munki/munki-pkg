@@ -263,7 +263,7 @@ def default_build_info(project_dir):
     info['identifier'] = "com.github.munki.pkg." + basename
     info['install_location'] = '/'
     info['version'] = "1.0"
-    info['distribution_style'] = False
+    info['distribution_style'] = True
     return info
 
 

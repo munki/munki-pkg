@@ -188,11 +188,14 @@ def read_build_info(path):
         raise BuildError("%s is not a valid %s file: %s"
                          % (path, path.split('.')[-1], str(err)))
     validate_build_info_keys(build_info, path)
-    if '${version}' in build_info['name']:
-        build_info['name'] = build_info['name'].replace(
-            '${version}',
-            str(build_info['version'])
-        )
+
+    # Perform version substitution for name and title
+    for key in ['name', 'title']:
+        if key in build_info and '${version}' in str(build_info[key]):
+            build_info[key] = build_info[key].replace(
+                '${version}',
+                str(build_info['version'])
+            )
 
     return build_info
 
@@ -264,6 +267,7 @@ def default_build_info(project_dir):
     info['install_location'] = '/'
     info['version'] = "1.0"
     info['distribution_style'] = True
+    info['title'] = ""
     return info
 
 
@@ -287,6 +291,7 @@ def get_build_info(project_dir, options):
         'distribution_style',
         'signing_info',
         'notarization_info',
+        'title',
     ]
     build_file = os.path.join(project_dir, BUILD_INFO_FILE)
     file_type = None
@@ -640,19 +645,44 @@ def build_pkg(build_info, options):
 
 
 def build_distribution_pkg(build_info, options):
-    '''Converts component pkg to dist pkg'''
+    '''Converts component pkg to dist pkg using a distribution file to support titles'''
     pkginputname = os.path.join(build_info['build_dir'], build_info['name'])
     distoutputname = os.path.join(
         build_info['build_dir'], 'Dist-' + build_info['name'])
+    
     if os.path.exists(distoutputname):
         retcode = subprocess.call(["/bin/rm", "-rf", distoutputname])
         if retcode:
             raise BuildError(
                 'Error removing existing %s: %s' % (distoutputname, retcode))
 
-    cmd = [PRODUCTBUILD]
+    # Create a temporary Distribution file to hold metadata (like title)
+    dist_xml_path = os.path.join(build_info['tmpdir'], 'Distribution')
+    title = build_info.get('title', build_info['name'])
+    
+    dist_xml_content = f'''<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="1">
+    <title>{title}</title>
+    <options customize="never" require-scripts="false"/>
+    <choices-outline>
+        <line choice="default"/>
+    </choices-outline>
+    <choice id="default" visible="false">
+        <pkg-ref id="default"/>
+    </choice>
+    <pkg-ref id="default">{build_info['name']}</pkg-ref>
+</installer-gui-script>'''
+
+    with open(dist_xml_path, 'w') as f:
+        f.write(dist_xml_content)
+
+    # Use --distribution instead of --package because title flags don't exist in CLI
+    cmd = [PRODUCTBUILD, '--distribution', dist_xml_path, 
+           '--package-path', build_info['build_dir']]
+    
     if options.quiet:
         cmd.append('--quiet')
+        
     add_signing_options_to_cmd(cmd, build_info, options)
     # if there is a PRE-INSTALL REQUIREMENTS PROPERTY LIST, use it
     requirements_plist = os.path.join(
@@ -663,12 +693,13 @@ def build_distribution_pkg(build_info, options):
     # use package identifier
     product_id = build_info.get('product id', build_info['identifier'])
     cmd.extend(['--identifier', product_id, '--version', str(build_info['version'])])
-    # add the input and output package paths
-    cmd.extend(['--package', pkginputname, distoutputname])
+    
+    cmd.append(distoutputname)
 
     retcode = subprocess.call(cmd)
     if retcode:
         raise BuildError("Distribution package creation failed.")
+        
     try:
         display("Removing component package %s" % pkginputname, options.quiet)
         os.unlink(pkginputname)

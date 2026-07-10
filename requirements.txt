@@ -1,1 +1,9 @@
-PyYAML>=3.11
+# munkipkg no longer has any Python (or pip) dependencies.
+#
+# munkipkg is now a Perl script that runs against the Perl that ships with stock
+# macOS (currently 5.34), with no required external or CPAN dependencies.
+#
+# YAML build-info support is optional and uses the system `YAML` Perl module when
+# it is available.
+#
+# This file is retained only so existing references to it do not break.

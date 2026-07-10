@@ -12,20 +12,15 @@ Files, scripts, and metadata are stored in a way that is easy to track and manag
 
 So why consider using munkipkg? It's simple and self-contained, with no external dependencies. It can use JSON or YAML for its build settings file/data, instead of Makefile syntax or XML plists. It does not install a root-level system daemon as does autopkg. It can easily build distribution-style packages and can sign them. Finally, munkipkg can import existing packages.
 
-## macOS and Python notes
+## macOS and Perl notes
 
-munkipkg requires Python. It also uses several command-line tools available on macOS. There is no support for running these on Windows or Linux.
+munkipkg is a Perl script (`#!/usr/bin/perl`) that runs against the Perl that ships with stock macOS (currently 5.34). It has no required external or CPAN dependencies, and it uses several command-line tools available on macOS. There is no support for running these on Windows or Linux.
 
-In macOS 12.3, Apple removed the Python 2.7 install. Out-of-the-box, there is no Python installed. You'll need to provide your own Python3 to use munkipkg.
+munkipkg was previously written in Python. Because recent versions of macOS no longer ship a Python interpreter out of the box, that tool required you to install and maintain your own Python3. Stock Perl is always present on macOS, so munkipkg now works out of the box with nothing extra to install.
 
-Some options for providing an appropriate Python:
+For reading and writing property lists, munkipkg uses the macOS Foundation Objective-C bridge (`PerlObjCBridge`), which ships with macOS. JSON support uses the core `JSON::PP` module. YAML support is optional and uses the system `YAML` Perl module if it is present (see the build-info section below).
 
-1) If you also use Munki, use Munki's bundled Python. You could make a symlink at /usr/local/bin/python3 pointing to `/usr/local/munki/munki-python` (this assumes `/usr/local/bin` is in your `PATH`, which it is by default. You could create symlink in any writable directory in your `PATH` if it differs)
-2) Install Python from https://www.python.org. You might still need to create a symlink somewhere so that `/usr/bin/env python3` executes the Python you installed.
-3) Install Apple's Python 3 by running `/usr/bin/python3` and accepting the prompt to install Python (if Xcode or the Xcode Command Line Tools are not already present).
-4) There are other ways to install Python, including Homebrew (https://brew.sh), macadmins-python (https://github.com/macadmins/python), relocatable-python tool (https://github.com/gregneagle/relocatable-python), etc.
-
-If you don't want to create a symlink or alter your PATH so that `/usr/bin/env python3` executes an appropriate Python for munkipkg, you can just call munkipkg _from_ the Python of your choice, eg: `/path/to/your/python3 /path/to/munkipkg [options]`
+This is a drop-in replacement for the previous Python tool: all existing behavior, options, build-info formats (plist/json/yaml), and project layouts are unchanged. Existing package projects and AutoPkg recipes continue to work without modification, including projects whose own pre/postinstall scripts are written in Python (those scripts run via `pkgbuild` regardless of language).
 
 ## Basic operation
 
@@ -72,7 +67,7 @@ Causes munkipkg to build the package defined in package_project_directory. The b
 
 ### build-info
 
-Build options are stored in a file at the root of the package project. XML plist and JSON formats are supported. YAML is supported if you also install the Python PyYAML module. A build-info file is not strictly required, and a build will use default values if this file is missing.
+Build options are stored in a file at the root of the package project. XML plist and JSON formats are supported. YAML is supported if the system `YAML` Perl module is present. A build-info file is not strictly required, and a build will use default values if this file is missing.
 
 XML plist is the default and preferred format. It can represent all the needed macOS data structures. JSON and YAML are also supported, but there is no guarantee that these formats will support future features of munkipkg. (Translation: use XML plist format unless it really, really bothers you; in that case use JSON or YAML but don't come crying to me if you can't use shiny new features with your JSON or YAML files. And please don't ask for help _formatting_ your JSON or YAML!)
 
@@ -127,7 +122,7 @@ If both build-info.plist and build-info.json are present, the plist file will be
 
 #### build-info.yaml
 
-As a third alternative, you may specify build-info in YAML format, if you've installed the Python YAML module (PyYAML). A new project created with `munkipkg --create --yaml Foo` would have this build-info.yaml file:
+As a third alternative, you may specify build-info in YAML format, if the system `YAML` Perl module is present. A new project created with `munkipkg --create --yaml Foo` would have this build-info.yaml file:
 
 ```yaml
 distribution_style: false

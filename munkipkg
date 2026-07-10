@@ -1,13 +1,10 @@
-#!/usr/bin/env python3
-# encoding: utf-8
-"""
-munkipkg
-
-A tool for making packages from projects that can be easily managed in a
-version control system like git.
-
-"""
-# Copyright 2015-2022 Greg Neagle.
+#!/usr/bin/perl
+# munkipkg
+#
+# A tool for making packages from projects that can be easily managed in a
+# version control system like git.
+#
+# Copyright 2015-2022 Greg Neagle.  (Perl port 2026.)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,335 +18,564 @@ version control system like git.
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import, print_function
+use strict;
+use warnings;
 
-import glob
-import json
-import optparse
-import os
-import plistlib
-import shutil
-import stat
-import subprocess
-import sys
-import tempfile
-import time
-from xml.dom import minidom
-from xml.parsers.expat import ExpatError
+use Foundation;
+use JSON::PP ();
+use Getopt::Long qw(:config no_ignore_case);
+use File::Temp ();
+use File::Copy ();
+use File::Path ();
+use File::Basename ();
+use File::Glob ':bsd_glob';
+use POSIX ();
+use Cwd ();
+use B ();
+use IPC::Open3 ();
+use IO::Select ();
+use Symbol ();
 
-try:
-    import yaml
-    YAML_INSTALLED = True
-except ImportError:
-    YAML_INSTALLED = False
+# ===========================================================================
+# Perl port: helpers below have no line-for-line Python equivalent. Everything
+# after the constants section is a faithful transliteration of the Python
+# source (same sub names, order, and control flow).
+# ===========================================================================
 
-from xml.dom import minidom
-from xml.parsers.expat import ExpatError
+# Perl port: Python's exception classes as blessed error packages. Stringify
+# to the message so an uncaught die reads like the Python traceback message.
+{
+    package MunkiPkgError;
+    use overload '""' => sub { $_[0]->{message} }, fallback => 1;
+    sub new { my ($c, $m) = @_; bless { message => (defined $m ? "$m" : '') }, $c }
+    sub isa_error { 1 }
+    package BuildError;      our @ISA = ('MunkiPkgError');
+    package PkgImportError;  our @ISA = ('MunkiPkgError');
+}
 
-VERSION = "1.0"
-DITTO = "/usr/bin/ditto"
-LSBOM = "/usr/bin/lsbom"
-PKGBUILD = "/usr/bin/pkgbuild"
-PKGUTIL = "/usr/sbin/pkgutil"
-PRODUCTBUILD = "/usr/bin/productbuild"
-XCRUN = "/usr/bin/xcrun"
+# Perl port: map a signed status like -1 onto a real process exit code (255),
+# matching Python's sys.exit(-1).
+sub exit_status { my ($n) = @_; return $n < 0 ? (256 + $n) & 0xFF : $n & 0xFF; }
 
-GITIGNORE_DEFAULT = """# .DS_Store files!
+# Perl port: reproduce Python's oct() rendering (e.g. 0o755) for status messages.
+sub _oct_str { my ($mode) = @_; return "0o" . sprintf("%o", $mode); }
+
+# Perl port: Python uses os.lchmod / os.lchown (do not follow symlinks). Perl
+# core has no lchmod/lchown, so we use chmod/chown. This matches Python for
+# every non-symlink payload entry; payloads with mode-significant symlinks are
+# the one documented edge where behaviour can differ.
+sub _lchmod { my ($mode, $path) = @_; chmod $mode, $path; }
+sub _lchown { my ($uid, $gid, $path) = @_; chown $uid, $gid, $path; }
+
+# Perl port: native replacement for Python's subprocess.call(["/bin/rm","-rf",...]).
+# Avoids shelling out to /bin/rm. Returns 0 on success, nonzero if the path
+# still exists afterwards (so callers' retcode checks are preserved).
+sub remove_path {
+    my ($path) = @_;
+    return 0 unless -e $path || -l $path;
+    if (-d $path && !-l $path) {
+        File::Path::remove_tree($path, { safe => 0 });
+    } else {
+        unlink $path;
+    }
+    return (-e $path || -l $path) ? 1 : 0;
+}
+
+# Perl port: shutil.copytree replacement (recursive copy preserving modes).
+sub dircopy {
+    my ($src, $dst) = @_;
+    File::Path::make_path($dst);
+    chmod((stat $src)[2] & 07777, $dst);
+    opendir(my $dh, $src) or return;
+    my @entries = grep { $_ ne '.' && $_ ne '..' } readdir $dh;
+    closedir $dh;
+    for my $e (@entries) {
+        my $s = path_join($src, $e);
+        my $d = path_join($dst, $e);
+        if (-d $s) { dircopy($s, $d); }
+        else { File::Copy::copy($s, $d); chmod((stat $s)[2] & 07777, $d); }
+    }
+}
+
+# Perl port: os.path.join analogue. Python's join does not normalize, and the
+# parity tests compare exact path strings, so we avoid File::Spec->catfile.
+sub path_join {
+    my $p = shift;
+    for my $part (@_) { $p .= "/$part"; }
+    return $p;
+}
+
+# Perl port: recursive NS -> Perl converter. Booleans become JSON::PP bools so
+# they round-trip as <true/>/<false/> rather than <integer>.
+sub ns_to_perl {
+    my ($obj) = @_;
+    return undef unless defined $obj;
+    my $cls = $obj->className->UTF8String;
+    if ($cls =~ /Dictionary/) {
+        my %h;
+        my $keys = $obj->allKeys;
+        for (my $i = 0; $i < $keys->count; $i++) {
+            my $k = $keys->objectAtIndex_($i);
+            $h{ $k->UTF8String } = ns_to_perl($obj->objectForKey_($k));
+        }
+        return \%h;
+    }
+    if ($cls =~ /Array/) {
+        my @a;
+        for (my $i = 0; $i < $obj->count; $i++) {
+            push @a, ns_to_perl($obj->objectAtIndex_($i));
+        }
+        return \@a;
+    }
+    if ($cls =~ /Boolean/) {                       # __NSCFBoolean
+        return $obj->boolValue ? JSON::PP::true : JSON::PP::false;
+    }
+    if ($cls =~ /Number/) {                        # __NSCFNumber
+        my $t = $obj->objCType;
+        return $obj->boolValue ? JSON::PP::true : JSON::PP::false if $t eq 'c';
+        return $obj->doubleValue + 0 if $t =~ /[fd]/;
+        return $obj->longLongValue + 0;
+    }
+    if ($cls =~ /Data/) { return $obj; }           # opaque; not needed for build-info
+    return $obj->description->UTF8String;          # NSString / NSDate fallback
+}
+
+# Perl port: recursive Perl -> NS converter.
+sub perl_to_ns {
+    my ($d) = @_;
+    if (ref $d eq 'HASH') {
+        my $nd = NSMutableDictionary->dictionary;
+        for my $k (keys %$d) {
+            $nd->setObject_forKey_(perl_to_ns($d->{$k}),
+                                   NSString->stringWithUTF8String_("$k"));
+        }
+        return $nd;
+    }
+    if (ref $d eq 'ARRAY') {
+        my $na = NSMutableArray->array;
+        $na->addObject_(perl_to_ns($_)) for @$d;
+        return $na;
+    }
+    if (JSON::PP::is_bool($d)) {
+        return NSNumber->numberWithBool_($d ? 1 : 0);
+    }
+    return NSString->stringWithUTF8String_("") unless defined $d;
+    # Perl port: preserve the scalar's actual type (a string "1.0" stays a
+    # <string>; a real number becomes <real>/<integer>) by inspecting the SV
+    # flags rather than the text, mirroring Python's str/int/float distinction.
+    my $flags = B::svref_2object(\$d)->FLAGS;
+    if ($flags & B::SVf_IOK()) { return NSNumber->numberWithLongLong_($d); }
+    if ($flags & B::SVf_NOK()) { return NSNumber->numberWithDouble_($d); }
+    return NSString->stringWithUTF8String_("$d");
+}
+
+# Perl port: true if a bridge object is the nil sentinel or undef.
+sub _ns_is_nil {
+    my ($obj) = @_;
+    return 1 unless defined $obj;
+    return 1 if ref $obj && eval { $$obj == 0 };
+    return 0;
+}
+
+# Perl port: build-info key order matching Python's dict insertion order, so
+# JSON output byte-matches the Python tool. Keys not listed sort after these,
+# alphabetically.
+our @BUILD_INFO_KEY_ORDER = qw(
+    ownership suppress_bundle_relocation postinstall_action preserve_xattr
+    name identifier install_location version distribution_style
+    compression min-os-version large-payload signing_info notarization_info title
+);
+
+# Perl port: JSON encoder matching Python
+# json.dump(ensure_ascii=True, indent=4, separators=(',', ': ')). The top-level
+# build-info keys are emitted in BUILD_INFO_KEY_ORDER; JSON::PP encodes values
+# (nested dicts sorted canonically for determinism). No trailing newline.
+sub json_encode_buildinfo {
+    my ($data) = @_;
+    my %rank; my $i = 0; $rank{$_} = $i++ for @BUILD_INFO_KEY_ORDER;
+    my @keys = sort {
+        my $ra = exists $rank{$a} ? $rank{$a} : undef;
+        my $rb = exists $rank{$b} ? $rank{$b} : undef;
+        (defined $ra && defined $rb) ? $ra <=> $rb
+      : defined $ra ? -1
+      : defined $rb ? 1
+      : $a cmp $b;
+    } keys %$data;
+    my $vj = JSON::PP->new->ascii(1)->canonical(1)
+                     ->indent(1)->indent_length(4)->space_before(0)->space_after(1);
+    my @lines;
+    for my $k (@keys) {
+        my $kj = $vj->encode("$k"); $kj =~ s/\n\z//;
+        my $vv = $vj->encode($data->{$k}); $vv =~ s/\n\z//;
+        $vv =~ s/\n/\n    /g;                       # re-indent nested lines
+        push @lines, "    $kj: $vv";
+    }
+    return "{\n" . join(",\n", @lines) . "\n}";
+}
+
+sub json_decode { my ($s) = @_; return JSON::PP->new->decode($s); }
+
+# Perl port: optional YAML, mirroring Python's `try: import yaml`. This runs at
+# runtime (not in a BEGIN block) so the `= 0` initializer above can't clobber a
+# compile-time success.
+our $YAML_INSTALLED = 0;
+eval { require YAML; $YAML_INSTALLED = 1; };
+
+# Perl port: YAML.pm has no native boolean type -- it would dump a
+# JSON::PP::Boolean with an ugly !!perl/scalar tag, and it reads `true`/`false`
+# back as plain strings. So on dump we render booleans as the bare words
+# true/false (PyYAML-compatible), and boolean coercion on read is handled by
+# _coerce_build_info_bools below (PyYAML returns real booleans; we match that).
+sub _yaml_prepare {
+    my ($d) = @_;
+    return $d ? "true" : "false" if JSON::PP::is_bool($d);
+    return { map { $_ => _yaml_prepare($d->{$_}) } keys %$d } if ref $d eq 'HASH';
+    return [ map { _yaml_prepare($_) } @$d ] if ref $d eq 'ARRAY';
+    return $d;
+}
+sub yaml_load { my ($s) = @_; return YAML::Load($s); }
+sub yaml_dump { my ($d) = @_; return YAML::Dump(_yaml_prepare($d)); }
+
+# Perl port: coerce build-info's known boolean keys to real JSON::PP booleans.
+# plist/JSON already yield booleans; YAML yields the strings "true"/"false".
+# Mirrors PyYAML producing real bools so downstream truthiness + validation work.
+our @BUILD_INFO_BOOL_KEYS = qw(
+    suppress_bundle_relocation distribution_style preserve_xattr large-payload
+);
+sub _to_bool {
+    my ($v) = @_;
+    return $v if JSON::PP::is_bool($v);
+    return (defined $v && ($v eq '1' || $v =~ /^(?:true|yes|on)$/i))
+        ? JSON::PP::true : JSON::PP::false;
+}
+sub _coerce_build_info_bools {
+    my ($bi) = @_;
+    for my $k (@BUILD_INFO_BOOL_KEYS) {
+        $bi->{$k} = _to_bool($bi->{$k}) if exists $bi->{$k};
+    }
+    if (ref $bi->{signing_info} eq 'HASH' && exists $bi->{signing_info}{timestamp}) {
+        $bi->{signing_info}{timestamp} = _to_bool($bi->{signing_info}{timestamp});
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Constants (same names/values/order as the Python source)
+# ---------------------------------------------------------------------------
+our $VERSION_STR = "1.0";
+use constant {
+    DITTO        => "/usr/bin/ditto",
+    LSBOM        => "/usr/bin/lsbom",
+    PKGBUILD     => "/usr/bin/pkgbuild",
+    PKGUTIL      => "/usr/sbin/pkgutil",
+    PRODUCTBUILD => "/usr/bin/productbuild",
+    XCRUN        => "/usr/bin/xcrun",
+};
+
+our $GITIGNORE_DEFAULT = <<'EOT';
+# .DS_Store files!
 .DS_Store
 
 # our build directory
 build/
-"""
+EOT
 
-BUILD_INFO_FILE = "build-info"
-REQUIREMENTS_PLIST = "product-requirements.plist"
-BOM_TEXT_FILE = "Bom.txt"
+use constant {
+    BUILD_INFO_FILE    => "build-info",
+    REQUIREMENTS_PLIST => "product-requirements.plist",
+    BOM_TEXT_FILE      => "Bom.txt",
+    STAPLE_TIMEOUT     => 300,
+    STAPLE_SLEEP       => 5,
+};
 
-STAPLE_TIMEOUT = 300
-STAPLE_SLEEP = 5
+our %options;   # populated by parse_options(); the module-level "options" object
 
+# Forward declarations for subs implemented in later tasks so the file compiles.
+sub import_pkg;
+sub sync_from_bom_info;
+sub build;
+sub upload_to_notary;
+sub wait_for_notarization;
+sub staple;
+sub import_bundle_pkg;
 
-class MunkiPkgError(Exception):
-    '''Base Exception for errors in this domain'''
-    pass
+# Perl port: the Python 2/3 plistlib shims become bridge-backed wrappers.
+# PerlObjCBridge cannot marshal the NSPropertyListFormat* out-parameter of
+# +propertyListWithData:options:format:error:, so we spill the bytes to a
+# temp file and reuse the (proven) file-reading path. Still pure bridge.
+sub readPlistFromString {
+    my ($data) = @_;
+    my ($fh, $tmp) = File::Temp::tempfile(UNLINK => 1);
+    binmode $fh;
+    print $fh $data;
+    close $fh;
+    return readPlist($tmp);
+}
 
-
-class BuildError(MunkiPkgError):
-    '''Exception for build errors'''
-    pass
-
-
-class PkgImportError(MunkiPkgError):
-    '''Exception for pkg import errors'''
-    pass
-
-
-def readPlistFromString(data):
-    '''Wrapper for the differences between Python 2 and Python 3's plistlib'''
-    try:
-        return plistlib.loads(data)
-    except AttributeError:
-        # plistlib module doesn't have a load function (as in Python 2)
-        return plistlib.readPlistFromString(data)
-
-
-def readPlist(filepath):
-    '''Wrapper for the differences between Python 2 and Python 3's plistlib'''
-    try:
-        with open(filepath, "rb") as fileobj:
-            return plistlib.load(fileobj)
-    except AttributeError:
-        # plistlib module doesn't have a load function (as in Python 2)
-        return plistlib.readPlist(filepath)
-
-
-def writePlist(plist, filepath):
-    '''Wrapper for the differences between Python 2 and Python 3's plistlib'''
-    try:
-        with open(filepath, "wb") as fileobj:
-            plistlib.dump(plist, fileobj)
-    except AttributeError:
-        # plistlib module doesn't have a dump function (as in Python 2)
-        plistlib.writePlist(plist, filepath)
-
-
-def unlink_if_possible(pathname):
-    '''Attempt to remove pathname but don't raise an execption if it fails'''
-    try:
-        os.unlink(pathname)
-    except OSError as err:
-        print("WARNING: could not remove %s: %s" % (pathname, err),
-              file=sys.stderr)
-
-
-def display(message, quiet=False, toolname=None):
-    '''Print message to stdout unless quiet is True'''
-    if not quiet:
-        if not toolname:
-            toolname = os.path.basename(sys.argv[0])
-        print(("%s: %s" % (toolname, message)))
-
-
-def run_subprocess(cmd):
-    '''Runs cmd with Popen'''
-    proc = subprocess.Popen(
-        cmd,
-        shell=False,
-        universal_newlines=True,
-        bufsize=1,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-
-    proc_stdout, proc_stderr = proc.communicate()
-    retcode = proc.returncode
-    return (retcode, proc_stdout, proc_stderr)
-
-
-def validate_build_info_keys(build_info, file_path):
-    '''Validates the data read from build_info.(plist|json|yaml|yml)'''
-    valid_values = {
-        'compression': ['legacy', 'latest'],
-        'ownership': ['recommended', 'preserve', 'preserve-other'],
-        'postinstall_action': ['none', 'logout', 'restart'],
-        'suppress_bundle_relocation': [True, False],
-        'distribution_style': [True, False],
-        'preserve_xattr': [True, False],
+sub readPlist {
+    my ($filepath) = @_;
+    my $obj = NSDictionary->dictionaryWithContentsOfFile_($filepath);
+    if (_ns_is_nil($obj)) {
+        # could be a top-level array (e.g. component.plist)
+        $obj = NSArray->arrayWithContentsOfFile_($filepath);
     }
-    for key in valid_values:
-        if key in build_info:
-            if build_info[key] not in valid_values[key]:
-                print("ERROR: %s key '%s' has illegal value: %s"
-                      % (file_path, key, repr(build_info[key])),
-                      file=sys.stderr)
-                print('ERROR: Legal values are: %s' % valid_values[key],
-                      file=sys.stderr)
-                return False
-    return True
+    die MunkiPkgError->new("Couldn't read $filepath") if _ns_is_nil($obj);
+    return ns_to_perl($obj);
+}
 
+sub writePlist {
+    my ($plist, $filepath) = @_;
+    my $obj = perl_to_ns($plist);
+    my $err = 0;
+    # NSPropertyListXMLFormat_v1_0 == 100
+    my $nsdata = NSPropertyListSerialization
+        ->dataWithPropertyList_format_options_error_($obj, 100, 0, \$err);
+    die MunkiPkgError->new("Couldn't serialize $filepath") if _ns_is_nil($nsdata);
+    my $ok = $nsdata->writeToFile_atomically_($filepath, 1);
+    die MunkiPkgError->new("Couldn't write $filepath") unless $ok;
+}
 
-def read_build_info(path):
-    '''Reads and validates data in the build_info'''
-    build_info = None
-    exception_list = (ExpatError, ValueError)
-    if YAML_INSTALLED:
-        exception_list = (ExpatError, ValueError, yaml.scanner.ScannerError)
-    try:
-        if path.endswith('.json'):
-            with open(path, 'r') as openfile:
-                build_info = json.load(openfile)
-        elif path.endswith(('.yaml', '.yml')):
-            with open(path, 'r') as openfile:
-                build_info = yaml.load(openfile, Loader=yaml.FullLoader)
-        elif path.endswith('.plist'):
-            build_info = readPlist(path)
-    except exception_list as err:
-        raise BuildError("%s is not a valid %s file: %s"
-                         % (path, path.split('.')[-1], str(err)))
-    validate_build_info_keys(build_info, path)
+sub unlink_if_possible {
+    # Attempt to remove pathname but don't raise an exception if it fails
+    my ($pathname) = @_;
+    unlink $pathname or print STDERR "WARNING: could not remove $pathname: $!\n";
+}
 
-    # Perform version substitution for name and title
-    for key in ['name', 'title']:
-        if key in build_info and '${version}' in str(build_info[key]):
-            build_info[key] = build_info[key].replace(
-                '${version}',
-                str(build_info['version'])
-            )
+sub display {
+    # Print message to stdout unless quiet is True
+    my ($message, $quiet, $toolname) = @_;
+    $quiet ||= 0;
+    if (!$quiet) {
+        $toolname ||= File::Basename::basename($0);
+        print "$toolname: $message\n";
+    }
+}
 
-    return build_info
+sub run_subprocess {
+    # Runs cmd, capturing stdout/stderr/returncode (no shell). Drains stdout
+    # and stderr concurrently via select() so a child that fills one pipe
+    # while writing the other cannot deadlock us.
+    my ($cmd) = @_;
+    my ($wtr, $rdr);
+    my $err = Symbol::gensym();
+    my $pid = IPC::Open3::open3($wtr, $rdr, $err, @$cmd);
+    close $wtr;
+    my %buf = ($rdr => '', $err => '');
+    my $sel = IO::Select->new($rdr, $err);
+    while (my @ready = $sel->can_read) {
+        for my $fh (@ready) {
+            my $n = sysread($fh, my $chunk, 65536);
+            if (!defined $n || $n == 0) { $sel->remove($fh); next; }
+            $buf{$fh} .= $chunk;
+        }
+    }
+    waitpid($pid, 0);
+    my $retcode = $? >> 8;
+    return ($retcode, $buf{$rdr}, $buf{$err});
+}
 
+# Perl port: subprocess.call analogue (inherits parent stdio).
+sub call {
+    my ($cmd) = @_;
+    my $rc = system(@$cmd);
+    return $rc == -1 ? -1 : ($rc >> 8);
+}
 
-def make_component_property_list(build_info, options):
-    """Use pkgbuild --analyze to build a component property list; then
-    turn off package relocation, Return path to the resulting plist."""
-    component_plist = os.path.join(build_info['tmpdir'], 'component.plist')
-    cmd = [PKGBUILD]
-    if options.quiet:
-        cmd.append('--quiet')
-    cmd.extend(["--analyze", "--root", build_info['payload'], component_plist])
-    try:
-        returncode = subprocess.call(cmd)
-    except OSError as err:
-        raise BuildError(
-            "pkgbuild execution failed with error code %d: %s"
-            % (err.errno, err.strerror))
-    if returncode:
-        raise BuildError("pkgbuild failed with exit code %d" % returncode)
-    try:
-        plist = readPlist(component_plist)
-    except ExpatError as err:
-        raise BuildError("Couldn't read %s" % component_plist)
+sub validate_build_info_keys {
+    # Validates the data read from build_info.(plist|json|yaml|yml)
+    my ($build_info, $file_path) = @_;
+    my %valid_values = (
+        compression                => ['legacy', 'latest'],
+        ownership                  => ['recommended', 'preserve', 'preserve-other'],
+        postinstall_action         => ['none', 'logout', 'restart'],
+        suppress_bundle_relocation => 'BOOL',
+        distribution_style         => 'BOOL',
+        preserve_xattr             => 'BOOL',
+    );
+    for my $key (sort keys %valid_values) {
+        next unless exists $build_info->{$key};
+        my $spec = $valid_values{$key};
+        my $val  = $build_info->{$key};
+        my $ok;
+        if ($spec eq 'BOOL') { $ok = JSON::PP::is_bool($val) ? 1 : 0; }
+        else { $ok = (grep { !JSON::PP::is_bool($val) && $_ eq $val } @$spec) ? 1 : 0; }
+        if (!$ok) {
+            my $shown = JSON::PP::is_bool($val) ? ($val ? 'True' : 'False') : "'$val'";
+            print STDERR "ERROR: $file_path key '$key' has illegal value: $shown\n";
+            my $legal = ($spec eq 'BOOL')
+                ? "[True, False]"
+                : "[" . join(", ", map { "'$_'" } @$spec) . "]";
+            print STDERR "ERROR: Legal values are: $legal\n";
+            return 0;
+        }
+    }
+    return 1;
+}
+
+# Perl port: the ${version}-substitution tail of read_build_info, factored out
+# so it can be exercised on an already-parsed hash.
+sub _finalize_build_info {
+    my ($build_info) = @_;
+    for my $key ('name', 'title') {
+        if (exists $build_info->{$key} && "$build_info->{$key}" =~ /\$\{version\}/) {
+            (my $v = "$build_info->{$key}") =~ s/\$\{version\}/$build_info->{version}/g;
+            $build_info->{$key} = $v;
+        }
+    }
+}
+
+sub read_build_info {
+    # Reads and validates data in the build_info
+    my ($path) = @_;
+    my $build_info;
+    my $ok = eval {
+        if ($path =~ /\.json$/) {
+            local $/; open my $f, '<', $path or die "$!\n"; $build_info = json_decode(<$f>);
+        } elsif ($path =~ /\.(ya?ml)$/) {
+            local $/; open my $f, '<', $path or die "$!\n"; $build_info = yaml_load(<$f>);
+        } elsif ($path =~ /\.plist$/) {
+            $build_info = readPlist($path);
+        }
+        1;
+    };
+    if (!$ok) {
+        my ($ext) = $path =~ /\.([^.]+)$/;
+        my $err = $@;
+        $err =~ s/ at \S+ line \d+\.?.*\z//s;   # Perl port: drop die() location suffix
+        $err =~ s/\s+\z//;
+        die BuildError->new("$path is not a valid $ext file: $err");
+    }
+    _coerce_build_info_bools($build_info);   # Perl port: before validation
+    validate_build_info_keys($build_info, $path);
+    _finalize_build_info($build_info);
+    return $build_info;
+}
+
+sub make_component_property_list {
+    # Use pkgbuild --analyze to build a component property list; then turn off
+    # package relocation. Return path to the resulting plist.
+    my ($build_info) = @_;
+    my $component_plist = path_join($build_info->{tmpdir}, 'component.plist');
+    my @cmd = (PKGBUILD);
+    push @cmd, '--quiet' if $options{quiet};
+    push @cmd, '--analyze', '--root', $build_info->{payload}, $component_plist;
+    my $returncode = call(\@cmd);
+    if ($returncode) { die BuildError->new("pkgbuild failed with exit code $returncode"); }
+    my $plist = eval { readPlist($component_plist) };
+    if (!defined $plist) { die BuildError->new("Couldn't read $component_plist"); }
     # plist is an array of dicts, iterate through
-    for bundle in plist:
-        if bundle.get("BundleIsRelocatable"):
-            bundle["BundleIsRelocatable"] = False
-            display('Turning off bundle relocation for %s'
-                    % bundle['RootRelativeBundlePath'], options.quiet)
-    try:
-        writePlist(plist, component_plist)
-    except BaseException as err:
-        raise BuildError("Couldn't write %s" % component_plist)
-    return component_plist
+    for my $bundle (@$plist) {
+        if ($bundle->{BundleIsRelocatable}) {
+            $bundle->{BundleIsRelocatable} = JSON::PP::false;
+            display("Turning off bundle relocation for $bundle->{RootRelativeBundlePath}",
+                    $options{quiet});
+        }
+    }
+    eval { writePlist($plist, $component_plist); 1 }
+        or die BuildError->new("Couldn't write $component_plist");
+    return $component_plist;
+}
 
-
-def make_pkginfo(build_info, options):
-    '''Creates a stub PackageInfo file for use with pkgbuild'''
-    if build_info['postinstall_action'] != 'none' and not options.quiet:
-        display("Setting postinstall-action to %s"
-                % build_info['postinstall_action'], options.quiet)
-    pkginfo_path = os.path.join(build_info['tmpdir'], 'PackageInfo')
-    pkginfo_text = (
+sub make_pkginfo {
+    # Creates a stub PackageInfo file for use with pkgbuild
+    my ($build_info) = @_;
+    if ($build_info->{postinstall_action} ne 'none' && !$options{quiet}) {
+        display("Setting postinstall-action to $build_info->{postinstall_action}", $options{quiet});
+    }
+    my $pkginfo_path = path_join($build_info->{tmpdir}, 'PackageInfo');
+    my $xattr = $build_info->{preserve_xattr} ? 'true' : 'false';
+    my $pkginfo_text =
         '<?xml version="1.0" encoding="utf-8" standalone="no"?>'
-        '<pkg-info postinstall-action="%s" preserve-xattr="%s"/>'
-        % (build_info['postinstall_action'],
-           str(build_info['preserve_xattr']).lower())
-    )
-    try:
-        fileobj = open(pkginfo_path, mode='w')
-        fileobj.write(pkginfo_text)
-        fileobj.close()
-        return pkginfo_path
-    except (OSError, IOError) as err:
-        raise BuildError('Couldn\'t create PackageInfo file: %s' % err)
+      . '<pkg-info postinstall-action="' . $build_info->{postinstall_action} . '" '
+      . 'preserve-xattr="' . $xattr . '"/>';
+    open my $fileobj, '>', $pkginfo_path
+        or die BuildError->new("Couldn't create PackageInfo file: $!");
+    print $fileobj $pkginfo_text;
+    close $fileobj;
+    return $pkginfo_path;
+}
 
+sub default_build_info {
+    # Return dict with default build info values
+    my ($project_dir) = @_;
+    my %info;
+    $info{ownership} = "recommended";
+    $info{suppress_bundle_relocation} = JSON::PP::true;
+    $info{postinstall_action} = 'none';
+    $info{preserve_xattr} = JSON::PP::false;
+    (my $trimmed = $project_dir) =~ s{/+$}{};
+    (my $basename = File::Basename::basename($trimmed)) =~ s/ //g;
+    $info{name} = $basename . '-${version}.pkg';
+    $info{identifier} = "com.github.munki.pkg." . $basename;
+    $info{install_location} = '/';
+    $info{version} = "1.0";
+    $info{distribution_style} = JSON::PP::false;
+    return \%info;
+}
 
-def default_build_info(project_dir):
-    '''Return dict with default build info values'''
-    info = {}
-    info['ownership'] = "recommended"
-    info['suppress_bundle_relocation'] = True
-    info['postinstall_action'] = 'none'
-    info['preserve_xattr'] = False
-    basename = os.path.basename(project_dir.rstrip('/')).replace(" ", "")
-    info['name'] = basename + '-${version}.pkg'
-    info['identifier'] = "com.github.munki.pkg." + basename
-    info['install_location'] = '/'
-    info['version'] = "1.0"
-    info['distribution_style'] = False
-    return info
-
-
-def get_build_info(project_dir, options):
-    '''Return dict with build info'''
-    info = default_build_info(project_dir)
-    info['project_dir'] = project_dir
+sub get_build_info {
+    # Return dict with build info
+    my ($project_dir) = @_;
+    my $info = default_build_info($project_dir);
+    $info->{project_dir} = $project_dir;
     # override default values with values from BUILD_INFO_PLIST
-    supported_keys = [
-        'compression',
-        'name',
-        'identifier',
-        'version',
-        'ownership',
-        'install_location',
-        'min-os-version',
-        'large-payload',
-        'postinstall_action',
-        'preserve_xattr',
-        'suppress_bundle_relocation',
-        'distribution_style',
-        'signing_info',
-        'notarization_info',
-        'title',
-    ]
-    build_file = os.path.join(project_dir, BUILD_INFO_FILE)
-    file_type = None
-    if not options.yaml and not options.json:
-        file_types = ['plist', 'json', 'yaml', 'yml']
-        for ext in file_types:
-            if os.path.exists(build_file + '.' + ext):
-                if file_type is None:
-                    file_type = ext
-                else:
-                    raise MunkiPkgError(
-                        "ERROR: Multiple build-info files found!")
-    else:
-        file_type = (
-            'yaml' if options.yaml else 'json' if options.json else 'plist')
+    my @supported_keys = qw(
+        compression name identifier version ownership install_location
+        min-os-version large-payload postinstall_action preserve_xattr
+        suppress_bundle_relocation distribution_style signing_info
+        notarization_info title
+    );
+    my $build_file = path_join($project_dir, BUILD_INFO_FILE);
+    my $file_type;
+    if (!$options{yaml} && !$options{json}) {
+        for my $ext ('plist', 'json', 'yaml', 'yml') {
+            if (-e "$build_file.$ext") {
+                if (!defined $file_type) { $file_type = $ext; }
+                else { die MunkiPkgError->new("ERROR: Multiple build-info files found!"); }
+            }
+        }
+    } else {
+        $file_type = $options{yaml} ? 'yaml' : $options{json} ? 'json' : 'plist';
+    }
+    my $file_info;
+    if ($file_type && -e "$build_file.$file_type") {
+        $file_info = read_build_info("$build_file.$file_type");
+    }
+    if ($file_info) {
+        for my $key (@supported_keys) {
+            $info->{$key} = $file_info->{$key} if exists $file_info->{$key};
+        }
+    } else {
+        die MunkiPkgError->new('ERROR: No build-info file found!');
+    }
+    return $info;
+}
 
-    file_info = None
-    if file_type and os.path.exists(build_file + '.' + file_type):
-        file_info = read_build_info(build_file + '.' + file_type)
+sub non_recommended_permissions_in_bom {
+    # Analyzes Bom.txt to determine if there are any items with owner/group
+    # other than 0/0, which implies we should handle ownership differently
+    my ($project_dir) = @_;
+    my $bom_list_file = path_join($project_dir, BOM_TEXT_FILE);
+    return 0 unless -e $bom_list_file;
+    my $result = eval {
+        open my $fileref, '<', $bom_list_file or die "$!\n";
+        while (defined(my $item = <$fileref>)) {
+            # shouldn't be any empty lines in Bom.txt, but...
+            next if $item eq "\n";
+            (my $line = $item) =~ s/\n\z//;
+            my @parts = split /\t/, $line;
+            my $user_group = $parts[2];
+            if ($user_group ne '0/0') { return 1; }
+        }
+        return 0;
+    };
+    if (!defined $result) { my $e = $@; $e =~ s/\s+\z//; print STDERR "ERROR: $e\n"; return 0; }
+    return $result;
+}
 
-    if file_info:
-        for key in supported_keys:
-            if key in file_info:
-                info[key] = file_info[key]
-    else:
-        raise MunkiPkgError('ERROR: No build-info file found!')
-
-    return info
-
-
-def non_recommended_permissions_in_bom(project_dir):
-    '''Analyzes Bom.txt to determine if there are any items with owner/group
-    other than 0/0, which implies we should handle ownership differently'''
-
-    bom_list_file = os.path.join(project_dir, BOM_TEXT_FILE)
-    if not os.path.exists(bom_list_file):
-        return False
-    try:
-        with open(bom_list_file) as fileref:
-            while True:
-                item = fileref.readline()
-                if not item:
-                    break
-                if item == '\n':
-                    # shouldn't be any empty lines in Bom.txt, but...
-                    continue
-                parts = item.rstrip('\n').split('\t')
-                user_group = parts[2]
-                if user_group != '0/0':
-                    return True
-        return False
-    except (OSError, ValueError) as err:
-        print('ERROR: %s' % err, file=sys.stderr)
-        return False
-
-
-def sync_from_bom_info(project_dir, options):
-    '''Uses Bom.txt to apply modes to files in payload dir and create any
-    missing empty directories, since git does not track these.'''
+sub sync_from_bom_info {
+    # Uses Bom.txt to apply modes to files in payload dir and create any
+    # missing empty directories, since git does not track these.
+    my ($project_dir) = @_;
 
     # possible to-do: preflight check: if there are files missing
     # (and not just directories), or there are extra files or directories,
@@ -358,310 +584,298 @@ def sync_from_bom_info(project_dir, options):
     # possible to-do: a refinement of the above preflight check
     # -- also check file checksums
 
-    bom_list_file = os.path.join(project_dir, BOM_TEXT_FILE)
-    payload_dir = os.path.join(project_dir, 'payload')
-    try:
-        build_info = get_build_info(project_dir, options)
-    except MunkiPkgError:
-        build_info = default_build_info(project_dir)
-    running_as_root = (os.geteuid() == 0)
-    if not os.path.exists(bom_list_file):
-        print((
-            "ERROR: Can't sync with bom info: no %s found in project directory."
-            % BOM_TEXT_FILE), file=sys.stderr)
-        return -1
-    if build_info['ownership'] != 'recommended' and not running_as_root:
-        print((
-            "\nWARNING: build-info ownership: %s might require using "
-            "sudo to properly sync owner and group for payload files.\n"
-            % build_info['ownership']), file=sys.stderr)
+    my $bom_list_file = path_join($project_dir, BOM_TEXT_FILE);
+    my $payload_dir   = path_join($project_dir, 'payload');
+    my $build_info = eval { get_build_info($project_dir) } || default_build_info($project_dir);
+    my $running_as_root = ($> == 0);
+    if (!-e $bom_list_file) {
+        print STDERR "ERROR: Can't sync with bom info: no " . BOM_TEXT_FILE
+            . " found in project directory.\n";
+        return -1;
+    }
+    if ($build_info->{ownership} ne 'recommended' && !$running_as_root) {
+        print STDERR "\nWARNING: build-info ownership: $build_info->{ownership} might require using "
+            . "sudo to properly sync owner and group for payload files.\n\n";
+    }
 
-    returncode = 0
-    changes_made = 0
+    my $returncode = 0;
+    my $changes_made = 0;
 
-    try:
-        with open(bom_list_file) as fileref:
-            while True:
-                item = fileref.readline()
-                if not item:
-                    break
-                if item == '\n':
-                    # shouldn't be any empty lines in Bom.txt, but...
-                    continue
-                parts = item.rstrip('\n').split('\t')
-                path = parts[0]
-                if path.startswith('./'):
-                    path = path[2:]
-                full_mode = parts[1]
-                user_group = parts[2].partition('/')
-                desired_user = int(user_group[0])
-                desired_group = int(user_group[2])
-                desired_mode = int(full_mode[-4:], 8)
-                payload_path = os.path.join(payload_dir, path)
-                basename = os.path.basename(path)
-                if basename.startswith('._'):
-                    otherfile = os.path.join(
-                        os.path.dirname(path), basename[2:])
-                    print((
-                        'WARNING: file %s contains extended attributes or a '
-                        'resource fork for %s. git and pkgbuild may not '
-                        'properly preserve extended attributes.'
-                        % (path, otherfile)), file=sys.stderr)
-                    continue
-                if os.path.lexists(payload_path):
-                    # file exists, check permission bits and adjust if needed
-                    current_mode = stat.S_IMODE(os.lstat(payload_path).st_mode)
-                    if current_mode != desired_mode:
-                        display("Changing mode of %s to %s"
-                                % (payload_path, oct(desired_mode)),
-                                options.quiet)
-                        os.lchmod(payload_path, desired_mode)
-                        changes_made += 1
-                elif full_mode.startswith('4'):
-                    # file doesn't exist and it's a directory; re-create it
-                    display("Creating %s with mode %s"
-                            % (payload_path, oct(desired_mode)),
-                            options.quiet)
-                    os.mkdir(payload_path, desired_mode)
-                    changes_made += 1
-                    continue
-                else:
-                    # missing file. This is a problem.
-                    print("ERROR: File %s is missing in payload"
-                          % payload_path, file=sys.stderr)
-                    returncode = -1
-                    break
-                if running_as_root:
-                    # we can sync owner and group as well
-                    current_user = os.lstat(payload_path).st_uid
-                    current_group = os.lstat(payload_path).st_gid
-                    if (current_user != desired_user or
-                            current_group != desired_group):
-                        display("Changing user/group of %s to %s/%s"
-                                % (payload_path, desired_user, desired_group),
-                                options.quiet)
-                        os.lchown(payload_path, desired_user, desired_group)
-                        changes_made += 1
+    my $ok = eval {
+        open my $fileref, '<', $bom_list_file or die "$!\n";
+        while (defined(my $item = <$fileref>)) {
+            # shouldn't be any empty lines in Bom.txt, but...
+            next if $item eq "\n";
+            (my $line = $item) =~ s/\n\z//;
+            my @parts = split /\t/, $line;
+            my $path = $parts[0];
+            $path =~ s{^\./}{};
+            my $full_mode = $parts[1];
+            my ($ug_user, $ug_group) = split m{/}, $parts[2];
+            my $desired_user  = int($ug_user);
+            my $desired_group = int($ug_group);
+            my $desired_mode  = oct(substr($full_mode, -4));
+            my $payload_path  = path_join($payload_dir, $path);
+            my $basename = File::Basename::basename($path);
+            if ($basename =~ /^\._/) {
+                my $otherfile = path_join(File::Basename::dirname($path), substr($basename, 2));
+                print STDERR "WARNING: file $path contains extended attributes or a "
+                    . "resource fork for $otherfile. git and pkgbuild may not "
+                    . "properly preserve extended attributes.\n";
+                next;
+            }
+            if (-l $payload_path || -e $payload_path) {
+                # file exists, check permission bits and adjust if needed
+                my $current_mode = (lstat $payload_path)[2] & 07777;
+                if ($current_mode != $desired_mode) {
+                    display(sprintf("Changing mode of %s to %s", $payload_path, _oct_str($desired_mode)),
+                            $options{quiet});
+                    _lchmod($desired_mode, $payload_path);
+                    $changes_made++;
+                }
+            } elsif ($full_mode =~ /^4/) {
+                # file doesn't exist and it's a directory; re-create it
+                display(sprintf("Creating %s with mode %s", $payload_path, _oct_str($desired_mode)),
+                        $options{quiet});
+                mkdir $payload_path, $desired_mode;
+                $changes_made++;
+                next;
+            } else {
+                # missing file. This is a problem.
+                print STDERR "ERROR: File $payload_path is missing in payload\n";
+                $returncode = -1;
+                last;
+            }
+            if ($running_as_root) {
+                # we can sync owner and group as well
+                my ($current_user, $current_group) = (lstat $payload_path)[4, 5];
+                if ($current_user != $desired_user || $current_group != $desired_group) {
+                    display("Changing user/group of $payload_path to $desired_user/$desired_group",
+                            $options{quiet});
+                    _lchown($desired_user, $desired_group, $payload_path);
+                    $changes_made++;
+                }
+            }
+        }
+        1;
+    };
+    if (!$ok) { my $e = $@; $e =~ s/\s+\z//; print STDERR "ERROR: $e\n"; return -1; }
 
-    except (OSError, ValueError) as err:
-        print('ERROR: %s' % err, file=sys.stderr)
-        return -1
+    if ($returncode == 0 && !$options{quiet}) {
+        if ($changes_made) { display("Sync successful."); }
+        else { display("Sync successful: no changes needed."); }
+    }
+    return $returncode;
+}
 
-    if returncode == 0 and not options.quiet:
-        if changes_made:
-            display("Sync successful.")
-        else:
-            display("Sync successful: no changes needed.")
-    return returncode
-
-
-def add_project_subdirs(build_info):
-    '''Adds and validates project subdirs to build_info'''
+sub add_project_subdirs {
+    # Adds and validates project subdirs to build_info
+    my ($build_info) = @_;
     # validate payload and scripts dirs
-    project_dir = build_info['project_dir']
-    payload_dir = os.path.join(project_dir, 'payload')
-    scripts_dir = os.path.join(project_dir, 'scripts')
-    if not os.path.isdir(payload_dir):
-        payload_dir = None
-    if not os.path.isdir(scripts_dir):
-        scripts_dir = None
-    elif os.listdir(scripts_dir) in [[], ['.DS_Store']]:
+    my $project_dir = $build_info->{project_dir};
+    my $payload_dir = path_join($project_dir, 'payload');
+    my $scripts_dir = path_join($project_dir, 'scripts');
+    $payload_dir = undef unless -d $payload_dir;
+    if (!-d $scripts_dir) {
+        $scripts_dir = undef;
+    } else {
+        opendir(my $dh, $scripts_dir);
+        my @entries = grep { $_ ne '.' && $_ ne '..' } readdir $dh;
+        closedir $dh;
+        my @nonds = grep { $_ ne '.DS_Store' } @entries;
         # scripts dir is empty; don't include it as part of build
-        scripts_dir = None
-    if not payload_dir and not scripts_dir:
-        raise BuildError(
-            "%s does not contain a payload folder or a scripts folder."
-            % project_dir)
-
+        $scripts_dir = undef unless @nonds;
+    }
+    if (!$payload_dir && !$scripts_dir) {
+        die BuildError->new(
+            "$project_dir does not contain a payload folder or a scripts folder.");
+    }
     # make sure build directory exists
-    build_dir = os.path.join(project_dir, 'build')
-    if not os.path.exists(build_dir):
-        os.mkdir(build_dir)
-    elif not os.path.isdir(build_dir):
-        raise BuildError("%s is not a directory." % build_dir)
+    my $build_dir = path_join($project_dir, 'build');
+    if (!-e $build_dir) { mkdir $build_dir; }
+    elsif (!-d $build_dir) { die BuildError->new("$build_dir is not a directory."); }
+    $build_info->{payload}   = $payload_dir;
+    $build_info->{scripts}   = $scripts_dir;
+    $build_info->{build_dir} = $build_dir;
+    $build_info->{tmpdir}    = File::Temp::tempdir();
+}
 
-    build_info['payload'] = payload_dir
-    build_info['scripts'] = scripts_dir
-    build_info['build_dir'] = build_dir
-    build_info['tmpdir'] = tempfile.mkdtemp()
+sub write_build_info {
+    # writes out our build-info file in preferred format
+    my ($build_info, $project_dir) = @_;
+    my $ok = eval {
+        if ($options{json}) {
+            my $p = path_join($project_dir, BUILD_INFO_FILE . ".json");
+            open my $f, '>', $p or die "$!\n"; print $f json_encode_buildinfo($build_info); close $f;
+        } elsif ($options{yaml}) {
+            my $p = path_join($project_dir, BUILD_INFO_FILE . ".yaml");
+            open my $f, '>', $p or die "$!\n"; print $f yaml_dump($build_info); close $f;
+        } else {
+            my $p = path_join($project_dir, BUILD_INFO_FILE . ".plist");
+            writePlist($build_info, $p);
+        }
+        1;
+    };
+    if (!$ok) { die MunkiPkgError->new($@); }
+}
 
+sub create_default_gitignore {
+    # Create default .gitignore file for new projects
+    my ($project_dir) = @_;
+    my $gitignore_file = path_join($project_dir, '.gitignore');
+    open my $f, '>', $gitignore_file or die "$!\n";
+    print $f $GITIGNORE_DEFAULT;
+    close $f;
+}
 
-def write_build_info(build_info, project_dir, options):
-    '''writes out our build-info file in preferred format'''
-    try:
-        if options.json:
-            build_info_json = os.path.join(
-                project_dir, "%s.json" % BUILD_INFO_FILE)
-            with open(build_info_json, 'w') as json_file:
-                json.dump(
-                    build_info, json_file, ensure_ascii=True,
-                    indent=4, separators=(',', ': '))
-        elif options.yaml:
-            build_info_yaml = os.path.join(
-                project_dir, "%s.yaml" % BUILD_INFO_FILE)
-            with open(build_info_yaml, 'w') as yaml_file:
-                yaml_file.write(
-                    yaml.dump(build_info, default_flow_style=False)
-                )
-        else:
-            build_info_plist = os.path.join(
-                project_dir, "%s.plist" % BUILD_INFO_FILE)
-            writePlist(build_info, build_info_plist)
-    except OSError as err:
-        raise MunkiPkgError(err)
+sub create_template_project {
+    # Create an empty pkg project directory with default settings
+    my ($project_dir) = @_;
+    if (-e $project_dir) {
+        if (!$options{force}) {
+            print STDERR "ERROR: $project_dir already exists! "
+                . "Use --force to convert it to a project directory.\n";
+            return -1;
+        }
+    }
+    my $payload_dir = path_join($project_dir, 'payload');
+    my $scripts_dir = path_join($project_dir, 'scripts');
+    my $build_dir   = path_join($project_dir, 'build');
+    my $ok = eval {
+        mkdir $project_dir or die "$!\n" unless -e $project_dir;
+        mkdir $payload_dir or die "$!\n";
+        mkdir $scripts_dir or die "$!\n";
+        mkdir $build_dir   or die "$!\n";
+        my $build_info = default_build_info($project_dir);
+        write_build_info($build_info, $project_dir);
+        create_default_gitignore($project_dir);
+        display("Created new package project at $project_dir", $options{quiet});
+        1;
+    };
+    if (!$ok) { my $e = $@; $e =~ s/\s+\z//; print STDERR "ERROR: $e\n"; return -1; }
+    return 0;
+}
 
+sub export_bom {
+    # Exports bom to text format.
+    my ($bomfile, $project_dir) = @_;
+    my $destination = path_join($project_dir, BOM_TEXT_FILE);
+    my $ok = eval {
+        open my $fileobj, '>', $destination or die "$!\n";
+        # Stream lsbom's stdout straight to the file (no in-memory buffering),
+        # capturing stderr for error reporting -- mirrors the Python Popen.
+        my $errfh = Symbol::gensym();
+        my $pid = IPC::Open3::open3(my $in, '>&' . fileno($fileobj), $errfh, LSBOM, $bomfile);
+        close $in;
+        local $/;
+        my $stderr = <$errfh>;
+        waitpid($pid, 0);
+        my $rc = $? >> 8;
+        close $fileobj;
+        if ($rc) { die MunkiPkgError->new($stderr); }
+        1;
+    };
+    if (!$ok) {
+        die ref $@ ? $@ : do { my $e = $@; $e =~ s/\s+\z//; MunkiPkgError->new($e) };
+    }
+}
 
-def create_default_gitignore(project_dir):
-    '''Create default .gitignore file for new projects'''
-    gitignore_file = os.path.join(project_dir, '.gitignore')
-    fileobj = open(gitignore_file, "w")
-    fileobj.write(GITIGNORE_DEFAULT)
-    fileobj.close()
+sub export_bom_info {
+    # Extract the bom file from the built package and export its info to the
+    # project directory
+    my ($build_info) = @_;
+    my $pkg_path = path_join($build_info->{build_dir}, $build_info->{name});
+    display("Extracting bom file from $pkg_path", $options{quiet});
+    my ($rc, $stdout, $stderr) = run_subprocess([PKGUTIL, '--bom', $pkg_path]);
+    if ($rc) { $stderr =~ s/^\s+|\s+$//g; die BuildError->new($stderr); }
+    (my $bomfile = $stdout) =~ s/^\s+|\s+$//g;
+    my $destination = path_join($build_info->{project_dir}, BOM_TEXT_FILE);
+    display("Exporting bom info to $destination", $options{quiet});
+    export_bom($bomfile, $build_info->{project_dir});
+    unlink_if_possible($bomfile);
+}
 
-
-def create_template_project(project_dir, options):
-    '''Create an empty pkg project directory with default settings'''
-    if os.path.exists(project_dir):
-        if not options.force:
-            print((
-                "ERROR: %s already exists! "
-                "Use --force to convert it to a project directory."
-                % project_dir), file=sys.stderr)
-            return -1
-    payload_dir = os.path.join(project_dir, 'payload')
-    scripts_dir = os.path.join(project_dir, 'scripts')
-    build_dir = os.path.join(project_dir, 'build')
-    try:
-        if not os.path.exists(project_dir):
-            os.mkdir(project_dir)
-        os.mkdir(payload_dir)
-        os.mkdir(scripts_dir)
-        os.mkdir(build_dir)
-        build_info = default_build_info(project_dir)
-        write_build_info(build_info, project_dir, options)
-        create_default_gitignore(project_dir)
-        display(
-            "Created new package project at %s" % project_dir, options.quiet)
-    except (OSError, MunkiPkgError) as err:
-        print('ERROR: %s' % err, file=sys.stderr)
-        return -1
-    return 0
-
-
-def export_bom(bomfile, project_dir):
-    '''Exports bom to text format. Returns returncode from lsbom'''
-    destination = os.path.join(project_dir, BOM_TEXT_FILE)
-    try:
-        with open(destination, mode='w') as fileobj:
-            cmd = [LSBOM, bomfile]
-            proc = subprocess.Popen(cmd, stdout=fileobj, stderr=subprocess.PIPE)
-            _, stderr = proc.communicate()
-            if proc.returncode:
-                raise MunkiPkgError(stderr)
-    except OSError as err:
-        raise MunkiPkgError(err)
-
-
-def export_bom_info(build_info, options):
-    '''Extract the bom file from the built package and export its info to the
-    project directory'''
-    pkg_path = os.path.join(build_info['build_dir'], build_info['name'])
-    cmd = [PKGUTIL, '--bom', pkg_path]
-    display("Extracting bom file from %s" % pkg_path, options.quiet)
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    (stdout, stderr) = proc.communicate()
-    if proc.returncode:
-        raise BuildError(stderr.strip())
-
-    bomfile = stdout.strip()
-    destination = os.path.join(build_info['project_dir'], BOM_TEXT_FILE)
-    display("Exporting bom info to %s" % destination, options.quiet)
-    export_bom(bomfile, build_info['project_dir'])
-    unlink_if_possible(bomfile)
-
-
-def add_signing_options_to_cmd(cmd, build_info, options):
-    '''If build_info contains signing options, add them to the cmd'''
-    if 'signing_info' in build_info and not options.skip_signing:
-        display("Adding package signing info to command", options.quiet)
-        signing_info = build_info['signing_info']
-        if 'identity' in signing_info:
-            cmd.extend(['--sign', signing_info['identity']])
-        else:
-            raise BuildError('Missing identity in signing info!')
-        if 'keychain' in signing_info:
-            cmd.extend(['--keychain', signing_info['keychain']])
-        if 'additional_cert_names' in signing_info:
-            additional_cert_names = signing_info['additional_cert_names']
+sub add_signing_options_to_cmd {
+    # If build_info contains signing options, add them to the cmd
+    my ($cmd, $build_info) = @_;
+    if (exists $build_info->{signing_info} && !$options{skip_signing}) {
+        display("Adding package signing info to command", $options{quiet});
+        my $signing_info = $build_info->{signing_info};
+        if (exists $signing_info->{identity}) {
+            push @$cmd, '--sign', $signing_info->{identity};
+        } else {
+            die BuildError->new('Missing identity in signing info!');
+        }
+        if (exists $signing_info->{keychain}) {
+            push @$cmd, '--keychain', $signing_info->{keychain};
+        }
+        if (exists $signing_info->{additional_cert_names}) {
+            my $additional_cert_names = $signing_info->{additional_cert_names};
             # convert single string to list
-            try:
-                text_types = basestring # pylint: disable=basestring-builtin
-            except NameError:
-                text_types = str
-            if isinstance(additional_cert_names, text_types):
-                additional_cert_names = [additional_cert_names]
-            for cert_name in additional_cert_names:
-                cmd.extend(['--cert', cert_name])
-        if 'timestamp' in signing_info:
-            if signing_info['timestamp']:
-                cmd.extend(['--timestamp'])
-            else:
-                cmd.extend(['--timestamp=none'])
+            $additional_cert_names = [$additional_cert_names]
+                unless ref $additional_cert_names eq 'ARRAY';
+            for my $cert_name (@$additional_cert_names) {
+                push @$cmd, '--cert', $cert_name;
+            }
+        }
+        if (exists $signing_info->{timestamp}) {
+            if ($signing_info->{timestamp}) { push @$cmd, '--timestamp'; }
+            else { push @$cmd, '--timestamp=none'; }
+        }
+    }
+}
 
+# Perl port: testable seam that builds the exact pkgbuild argv, so signing
+# argv can be unit-tested without invoking pkgbuild.
+sub build_pkg_cmd {
+    my ($build_info) = @_;
+    my @cmd = (PKGBUILD,
+        '--ownership', $build_info->{ownership},
+        '--identifier', $build_info->{identifier},
+        '--version', "$build_info->{version}",
+        '--info', $build_info->{pkginfo_path});
+    if ($build_info->{payload}) {
+        push @cmd, '--root', $build_info->{payload};
+        if ($build_info->{install_location}) {
+            push @cmd, '--install-location', $build_info->{install_location};
+        }
+    } else {
+        push @cmd, '--nopayload';
+    }
+    push @cmd, '--compression', $build_info->{compression}
+        if exists $build_info->{compression};
+    push @cmd, '--component-plist', $build_info->{component_plist}
+        if $build_info->{component_plist};
+    push @cmd, '--min-os-version', $build_info->{'min-os-version'}
+        if exists $build_info->{'min-os-version'};
+    if (exists $build_info->{'large-payload'}) {
+        push @cmd, '--large-payload' if $build_info->{'large-payload'};
+    }
+    push @cmd, '--scripts', $build_info->{scripts} if $build_info->{scripts};
+    push @cmd, '--quiet' if $options{quiet};
+    if (!$build_info->{distribution_style}) {
+        add_signing_options_to_cmd(\@cmd, $build_info);
+    }
+    push @cmd, path_join($build_info->{build_dir}, $build_info->{name});
+    return \@cmd;
+}
 
-def build_pkg(build_info, options):
-    '''Use pkgbuild tool to build our package'''
-    cmd = [PKGBUILD,
-           '--ownership', build_info['ownership'],
-           '--identifier', build_info['identifier'],
-           '--version', str(build_info['version']),
-           '--info', build_info['pkginfo_path']]
-    if build_info['payload']:
-        cmd.extend(['--root', build_info['payload']])
-        if build_info.get('install_location'):
-            cmd.extend(['--install-location', build_info['install_location']])
-    else:
-        cmd.extend(['--nopayload'])
-    if 'compression' in build_info:
-        cmd.extend(['--compression', build_info['compression']])
-    if build_info['component_plist']:
-        cmd.extend(['--component-plist', build_info['component_plist']])
-    if 'min-os-version' in build_info:
-        cmd.extend(['--min-os-version', build_info['min-os-version']])
-    if 'large-payload' in build_info:
-        if build_info['large-payload']:
-            cmd.append('--large-payload')
-    if build_info['scripts']:
-        cmd.extend(['--scripts', build_info['scripts']])
-    if options.quiet:
-        cmd.append('--quiet')
-    if not build_info.get('distribution_style'):
-        add_signing_options_to_cmd(cmd, build_info, options)
-    cmd.append(os.path.join(build_info['build_dir'], build_info['name']))
-    retcode = subprocess.call(cmd)
-    if retcode:
-        raise BuildError("Package creation failed.")
+sub build_pkg {
+    # Use pkgbuild tool to build our package
+    my ($build_info) = @_;
+    my $retcode = call(build_pkg_cmd($build_info));
+    if ($retcode) { die BuildError->new("Package creation failed."); }
+}
 
-
-def build_distribution_pkg(build_info, options):
-    '''Converts component pkg to dist pkg using a distribution file to support titles'''
-    pkginputname = os.path.join(build_info['build_dir'], build_info['name'])
-    distoutputname = os.path.join(
-        build_info['build_dir'], 'Dist-' + build_info['name'])
-    
-    if os.path.exists(distoutputname):
-        retcode = subprocess.call(["/bin/rm", "-rf", distoutputname])
-        if retcode:
-            raise BuildError(
-                'Error removing existing %s: %s' % (distoutputname, retcode))
-
-    # Create a temporary Distribution file to hold metadata (like title)
-    dist_xml_path = os.path.join(build_info['tmpdir'], 'Distribution')
-    title = build_info.get('title', build_info['name'])
-    
-    dist_xml_content = f'''<?xml version="1.0" encoding="utf-8"?>
+# Perl port: testable seam returning the Distribution file contents. Matches
+# the Python f-string exactly, including no trailing newline.
+sub distribution_xml {
+    my ($build_info) = @_;
+    my $title = exists $build_info->{title} ? $build_info->{title} : $build_info->{name};
+    my $xml = <<"EOX";
+<?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="1">
-    <title>{title}</title>
+    <title>$title</title>
     <options customize="never" require-scripts="false" hostArchitectures="arm64,x86_64"/>
     <choices-outline>
         <line choice="default"/>
@@ -669,681 +883,696 @@ def build_distribution_pkg(build_info, options):
     <choice id="default" visible="false">
         <pkg-ref id="default"/>
     </choice>
-    <pkg-ref id="default">{build_info['name']}</pkg-ref>
-</installer-gui-script>'''
+    <pkg-ref id="default">$build_info->{name}</pkg-ref>
+</installer-gui-script>
+EOX
+    chomp $xml;   # Python f-string has no trailing newline
+    return $xml;
+}
 
-    with open(dist_xml_path, 'w') as f:
-        f.write(dist_xml_content)
+sub build_distribution_pkg {
+    # Converts component pkg to dist pkg using a distribution file to support titles
+    my ($build_info) = @_;
+    my $pkginputname   = path_join($build_info->{build_dir}, $build_info->{name});
+    my $distoutputname = path_join($build_info->{build_dir}, 'Dist-' . $build_info->{name});
+
+    if (-e $distoutputname) {
+        my $retcode = remove_path($distoutputname);
+        if ($retcode) {
+            die BuildError->new("Error removing existing $distoutputname: $retcode");
+        }
+    }
+
+    # Create a temporary Distribution file to hold metadata (like title)
+    my $dist_xml_path = path_join($build_info->{tmpdir}, 'Distribution');
+    open my $f, '>', $dist_xml_path or die BuildError->new($!);
+    print $f distribution_xml($build_info);
+    close $f;
 
     # Use --distribution instead of --package because title flags don't exist in CLI
-    cmd = [PRODUCTBUILD, '--distribution', dist_xml_path, 
-           '--package-path', build_info['build_dir']]
-    
-    if options.quiet:
-        cmd.append('--quiet')
-        
-    add_signing_options_to_cmd(cmd, build_info, options)
+    my @cmd = (PRODUCTBUILD, '--distribution', $dist_xml_path,
+               '--package-path', $build_info->{build_dir});
+    push @cmd, '--quiet' if $options{quiet};
+    add_signing_options_to_cmd(\@cmd, $build_info);
     # if there is a PRE-INSTALL REQUIREMENTS PROPERTY LIST, use it
-    requirements_plist = os.path.join(
-        build_info['project_dir'], REQUIREMENTS_PLIST)
-    if os.path.exists(requirements_plist):
-        cmd.extend(['--product', requirements_plist])
+    my $requirements_plist = path_join($build_info->{project_dir}, REQUIREMENTS_PLIST);
+    push @cmd, '--product', $requirements_plist if -e $requirements_plist;
     # if build_info contains a product id use that for product id, otherwise
     # use package identifier
-    product_id = build_info.get('product id', build_info['identifier'])
-    cmd.extend(['--identifier', product_id, '--version', str(build_info['version'])])
-    
-    cmd.append(distoutputname)
+    my $product_id = exists $build_info->{'product id'}
+        ? $build_info->{'product id'} : $build_info->{identifier};
+    push @cmd, '--identifier', $product_id, '--version', "$build_info->{version}";
+    push @cmd, $distoutputname;
 
-    retcode = subprocess.call(cmd)
-    if retcode:
-        raise BuildError("Distribution package creation failed.")
-        
-    try:
-        display("Removing component package %s" % pkginputname, options.quiet)
-        os.unlink(pkginputname)
-        display("Renaming distribution package %s to %s"
-                % (distoutputname, pkginputname), options.quiet)
-        os.rename(distoutputname, pkginputname)
-    except OSError as err:
-        raise BuildError(err)
+    my $retcode = call(\@cmd);
+    if ($retcode) { die BuildError->new("Distribution package creation failed."); }
 
+    my $ok = eval {
+        display("Removing component package $pkginputname", $options{quiet});
+        unlink $pkginputname or die "$!\n";
+        display("Renaming distribution package $distoutputname to $pkginputname", $options{quiet});
+        rename $distoutputname, $pkginputname or die "$!\n";
+        1;
+    };
+    if (!$ok) { my $e = $@; $e =~ s/\s+\z//; die BuildError->new($e); }
+}
 
-def get_primary_bundle_id(build_info):
-    '''Gets primary bundle id for notarization'''
-    primary_bundle_id = build_info['notarization_info'].get(
-            'primary_bundle_id',
-            build_info['identifier'],
-    )
-
+sub get_primary_bundle_id {
+    # Gets primary bundle id for notarization
+    my ($build_info) = @_;
+    my $primary_bundle_id = exists $build_info->{notarization_info}{primary_bundle_id}
+        ? $build_info->{notarization_info}{primary_bundle_id}
+        : $build_info->{identifier};
     # Apple notary service does not like underscores
-    primary_bundle_id = primary_bundle_id.replace('_', '-')
+    $primary_bundle_id =~ s/_/-/g;
+    return $primary_bundle_id;
+}
 
-    return primary_bundle_id
-
-
-def add_authentication_options(cmd, build_info):
-    '''Add --password or --apiKey + --apiIssuer options to the command'''
-    if (
-        'apple_id' in build_info['notarization_info'] and
-        'team_id' in build_info['notarization_info'] and
-        'password' in build_info['notarization_info']
-    ):
-        cmd.extend(
-            [
-                '--apple-id', build_info['notarization_info']['apple_id'],
-                '--team-id', build_info['notarization_info']['team_id'],
-                '--password', build_info['notarization_info']['password']
-            ]
-        )
-    elif (
-          'keychain_profile' in build_info['notarization_info']
-    ):
-        cmd.extend(
-            [
-                '--keychain-profile',
-                build_info['notarization_info']['keychain_profile']
-            ]
-        )
-    else:
-        raise MunkiPkgError(
+sub add_authentication_options {
+    # Add --password or --apiKey + --apiIssuer options to the command
+    my ($cmd, $build_info) = @_;
+    my $ni = $build_info->{notarization_info};
+    if (exists $ni->{apple_id} && exists $ni->{team_id} && exists $ni->{password}) {
+        push @$cmd, '--apple-id', $ni->{apple_id},
+                    '--team-id', $ni->{team_id},
+                    '--password', $ni->{password};
+    } elsif (exists $ni->{keychain_profile}) {
+        push @$cmd, '--keychain-profile', $ni->{keychain_profile};
+    } else {
+        die MunkiPkgError->new(
             "apple_id + team_id + password or keychain_profile "
-            "must be specified in notarization_info."
-        )
+            . "must be specified in notarization_info.");
+    }
+}
 
+sub upload_to_notary {
+    # Use xcrun notarytool to upload the package to Apple notary service
+    my ($build_info) = @_;
+    display("Uploading package to Apple notary service", $options{quiet});
+    my @cmd = (XCRUN, 'notarytool', 'submit', '--output-format', 'plist',
+               path_join($build_info->{build_dir}, $build_info->{name}));
+    add_authentication_options(\@cmd, $build_info);
 
-def upload_to_notary(build_info, options):
-    '''Use xcrun notarytool to upload the package to Apple notary service'''
+    my ($retcode, $proc_stdout, $proc_stderr) = run_subprocess(\@cmd);
+    if ($retcode) {
+        print STDERR "notarytool: " . $proc_stderr . "\n";
+        die MunkiPkgError->new("Notarization upload failed.");
+    }
+    if ($proc_stdout =~ /^Generated JWT/) { $proc_stdout =~ s/^[^\n]*\n//; }
+    my $output = eval { readPlistFromString($proc_stdout) };
+    if (!defined $output) {
+        print STDERR "notarytool: " . $proc_stderr . "\n";
+        die MunkiPkgError->new("Notarization upload failed.");
+    }
+    if (!exists $output->{id} || !exists $output->{message}) {
+        die MunkiPkgError->new("Unexpected output from notarytool");
+    }
+    my $request_id = $output->{id};
+    display("id " . $request_id, $options{quiet}, "notarytool");
+    display($output->{message}, $options{quiet}, "notarytool");
+    return $request_id;
+}
 
-    display("Uploading package to Apple notary service", options.quiet)
-    cmd = [
-        XCRUN,
-        'notarytool',
-        'submit',
-        '--output-format',
-        'plist',
-        os.path.join(build_info['build_dir'], build_info['name']),
-    ]
-    add_authentication_options(cmd, build_info)
+sub get_notarization_state {
+    # Checks for result of notarization process
+    my ($request_id, $build_info) = @_;
+    my %state;
+    my @cmd = (XCRUN, 'notarytool', 'info', $request_id, '--output-format', 'plist');
+    add_authentication_options(\@cmd, $build_info);
 
-    retcode, proc_stdout, proc_stderr = run_subprocess(cmd)
-    if retcode:
-        print("notarytool: " + proc_stderr, file=sys.stderr)
-        raise MunkiPkgError("Notarization upload failed.")
+    my ($retcode, $proc_stdout, $proc_stderr) = run_subprocess(\@cmd);
+    if ($retcode) {
+        print STDERR "notarytool: " . $proc_stderr . "\n";
+        die MunkiPkgError->new("Notarization check failed.");
+    }
+    if ($proc_stdout =~ /^Generated JWT/) { $proc_stdout =~ s/^[^\n]*\n//; }
+    my $output = eval { readPlistFromString($proc_stdout) };
+    if (!defined $output) {
+        print STDERR $proc_stderr . "\n";
+        die MunkiPkgError->new("Notarization check failed.");
+    }
+    if (!exists $output->{message}) {
+        print "notarytool: " . ($output->{'success-message'} // 'Unexpected response') . "\n";
+        print "notarytool: DEBUG output follows\n";
+        # Perl port: Python prints the parsed dict here; dump the parsed output.
+        print join(", ", map { "$_: " . (defined $output->{$_} ? $output->{$_} : '') }
+                             sort keys %$output) . "\n";
+        $state{status} = 'Unknown';
+    } else {
+        $state{id}      = $output->{id} // '';
+        $state{status}  = $output->{status} // 'Unknown';
+        $state{message} = $output->{message} // '';
+    }
+    return \%state;
+}
 
-    if proc_stdout.startswith('Generated JWT'):
-        proc_stdout = proc_stdout.split('\n',1)[1]
-    try:
-        output = readPlistFromString(proc_stdout.encode("UTF-8"))
-    except ExpatError:
-        print("notarytool: " + proc_stderr, file=sys.stderr)
-        raise MunkiPkgError("Notarization upload failed.")
+sub notarization_done {
+    # Evaluates whether notarization is still in progress
+    my ($state, $sleep_time) = @_;
+    if ($state->{status} eq 'Accepted') {
+        display("Notarization successful. $state->{message}", $options{quiet});
+        return 1;
+    } elsif (grep { $_ eq $state->{status} } ('In Progress', 'Unknown')) {
+        display("Notarization state: $state->{status}. Trying again in $sleep_time seconds",
+                $options{quiet});
+        return 0;
+    } else {
+        display("Notarization unsuccessful:\n"
+            . "\tStatus(id=$state->{id}): $state->{status}\n"
+            . "\tStatus Message: $state->{message}", $options{quiet});
+        die MunkiPkgError->new("Notarization failed");
+    }
+}
 
-    try:
-        request_id = output['id']
-        display("id " + request_id, options.quiet, "notarytool")
-        display(output['message'], options.quiet, "notarytool")
-    except KeyError:
-        raise MunkiPkgError("Unexpected output from notarytool")
+sub wait_for_notarization {
+    # Checks notarization state until it is done or we exceed the timeout value
+    my ($request_id, $build_info) = @_;
+    display("Getting notarization state", $options{quiet});
+    my $timeout = $build_info->{notarization_info}{staple_timeout} // STAPLE_TIMEOUT;
+    my $counter = 0;
+    my $sleep_time = STAPLE_SLEEP;
 
-    return request_id
+    while ($counter < $timeout) {
+        sleep $sleep_time;
+        $counter += $sleep_time;
+        $sleep_time += STAPLE_SLEEP;
 
+        my $state = get_notarization_state($request_id, $build_info);
 
-def get_notarization_state(request_id, build_info, options):
-    '''Checks for result of notarization process'''
-    state = {}
-    cmd = [
-        XCRUN,
-        'notarytool',
-        'info',
-        request_id,
-        '--output-format',
-        'plist',
-    ]
-    add_authentication_options(cmd, build_info)
+        return 1 if notarization_done($state, $sleep_time);
+    }
 
-    retcode, proc_stdout, proc_stderr = run_subprocess(cmd)
-    if retcode:
-        print("notarytool: " + proc_stderr, file=sys.stderr)
-        raise MunkiPkgError("Notarization check failed.")
+    print STDERR "munkipkg: Timeout EXCEEDED when waiting for the notarization to complete. "
+        . "You can manually staple the package later if notarization is successful.\n";
+    return 0;
+}
 
-    if proc_stdout.startswith('Generated JWT'):
-        proc_stdout = proc_stdout.split('\n',1)[1]
+sub staple {
+    # Use xcrun staple to add a staple to our package
+    my ($build_info) = @_;
+    display("Stapling package", $options{quiet});
+    my @cmd = (XCRUN, 'stapler', 'staple',
+               path_join($build_info->{build_dir}, $build_info->{name}));
+    my ($retcode, $proc_stdout, $proc_stderr) = run_subprocess(\@cmd);
 
-    try:
-        output = readPlistFromString(proc_stdout.encode("UTF-8"))
-    except ExpatError:
-        print(proc_stderr, file=sys.stderr)
-        raise MunkiPkgError("Notarization check failed.")
-    if 'message' not in output:
-        print("notarytool: " + output.get('success-message', 'Unexpected response'))
-        print("notarytool: DEBUG output follows")
-        print(output)
-        state['status'] = 'Unknown'
-    else:
-        state['id'] = output.get('id', '')
-        state['status'] = output.get('status', 'Unknown')
-        state['message'] = output.get('message', '')
-    return state
+    if ($retcode) {
+        print STDERR "stapler: FAILURE " . $proc_stderr . "\n";
+        die MunkiPkgError->new("Stapling failed");
+    } else {
+        display("The staple and validate action worked!", $options{quiet});
+    }
+}
 
+sub build {
+    # Build our package
+    my ($project_dir) = @_;
 
-def notarization_done(state, sleep_time, options):
-    '''Evaluates whether notarization is still in progress'''
-    if state['status'] == 'Accepted':
-        display("Notarization successful. {}".format(state['message']), options.quiet)
-        return True
-    elif state['status'] in ['In Progress', 'Unknown']:
-        display(
-            "Notarization state: {}. Trying again in {} seconds".format(
-                state['status'],
-                sleep_time,
-            ),
-            options.quiet,
-        )
-        return False
-    else:
-        display(
-            "Notarization unsuccessful:\n"
-            "\tStatus(id={}): {}\n"
-            "\tStatus Message: {}".format(
-                state['id'], state['status'], state['message']
-            ),
-            options.quiet,
-        )
-        raise MunkiPkgError("Notarization failed")
+    my $build_info = {};
+    my $result = eval {
+        my $bi = eval { get_build_info($project_dir) };
+        if ($@) { print STDERR "$@\n"; exit exit_status(-1); }
+        $build_info = $bi;
 
+        if (grep { $_ eq $build_info->{ownership} } ('preserve', 'preserve-other')) {
+            if ($> != 0) {
+                print STDERR "\nWARNING: build-info ownership: $build_info->{ownership} might require "
+                    . "using sudo to build this package.\n\n";
+            }
+        }
 
-def wait_for_notarization(request_id, build_info, options):
-    '''Checks notarization state until it is done or we exceed the timeout value'''
-    display("Getting notarization state", options.quiet)
-    timeout = build_info['notarization_info'].get('staple_timeout', STAPLE_TIMEOUT)
-    counter = 0
-    sleep_time = STAPLE_SLEEP
+        add_project_subdirs($build_info);
 
-    while counter < timeout:
-        time.sleep(sleep_time)
-        counter += sleep_time
-        sleep_time += STAPLE_SLEEP
-
-        state = get_notarization_state(request_id, build_info, options)
-
-        if notarization_done(state, sleep_time, options):
-            return True
-
-    print(
-        "munkipkg: Timeout EXCEEDED when waiting for the notarization to complete. "
-        "You can manually staple the package later if notarization is successful.",
-        file=sys.stderr,
-    )
-    return False
-
-
-def staple(build_info, options):
-    '''Use xcrun staple to add a staple to our package'''
-    display("Stapling package", options.quiet)
-    cmd = [
-        XCRUN,
-        'stapler',
-        'staple',
-        os.path.join(build_info['build_dir'], build_info['name']),
-    ]
-    retcode, proc_stdout, proc_stderr = run_subprocess(cmd)
-
-    if retcode:
-        print("stapler: FAILURE " + proc_stderr, file=sys.stderr)
-        raise MunkiPkgError("Stapling failed")
-    else:
-        display("The staple and validate action worked!", options.quiet)
-
-
-def build(project_dir, options):
-    '''Build our package'''
-
-    build_info = {}
-    try:
-        try:
-            build_info = get_build_info(project_dir, options)
-        except MunkiPkgError as err:
-            print(str(err), file=sys.stderr)
-            exit(-1)
-
-        if build_info['ownership'] in ['preserve', 'preserve-other']:
-            if os.geteuid() != 0:
-                print("\nWARNING: build-info ownership: %s might require "
-                      "using sudo to build this package.\n"
-                      % build_info['ownership'], file=sys.stderr)
-
-        add_project_subdirs(build_info)
-
-        build_info['component_plist'] = None
+        $build_info->{component_plist} = undef;
         # analyze root and turn off bundle relocation
-        if build_info['payload'] and build_info['suppress_bundle_relocation']:
-            build_info['component_plist'] = make_component_property_list(
-                build_info, options)
+        if ($build_info->{payload} && $build_info->{suppress_bundle_relocation}) {
+            $build_info->{component_plist} = make_component_property_list($build_info);
+        }
 
         # make a stub PkgInfo file
-        build_info['pkginfo_path'] = make_pkginfo(build_info, options)
+        $build_info->{pkginfo_path} = make_pkginfo($build_info);
 
         # remove any pre-existing pkg at the outputname path
-        outputname = os.path.join(build_info['build_dir'], build_info['name'])
-        if os.path.exists(outputname):
-            retcode = subprocess.call(["/bin/rm", "-rf", outputname])
-            if retcode:
-                raise BuildError("Could not remove existing %s" % outputname)
+        my $outputname = path_join($build_info->{build_dir}, $build_info->{name});
+        if (-e $outputname) {
+            my $retcode = remove_path($outputname);
+            if ($retcode) { die BuildError->new("Could not remove existing $outputname"); }
+        }
 
-        if build_info['scripts']:
+        if ($build_info->{scripts}) {
             # remove .DS_Store file from the scripts folder
-            if os.path.exists(os.path.join(build_info['scripts'], ".DS_Store")):
-                display("Removing .DS_Store file from the scripts folder",
-                        options.quiet)
-                os.remove(os.path.join(build_info['scripts'], ".DS_Store"))
-
+            my $ds = path_join($build_info->{scripts}, ".DS_Store");
+            if (-e $ds) {
+                display("Removing .DS_Store file from the scripts folder", $options{quiet});
+                unlink $ds;
+            }
             # make scripts executable
-            for pkgscript in ("preinstall", "postinstall"):
-                scriptpath = os.path.join(build_info['scripts'], pkgscript)
-                if (os.path.exists(scriptpath) and
-                        (os.stat(scriptpath).st_mode & 0o500) != 0o500):
-                    display("Making %s script executable" % pkgscript,
-                            options.quiet)
-                    os.chmod(scriptpath, 0o755)
+            for my $pkgscript ("preinstall", "postinstall") {
+                my $scriptpath = path_join($build_info->{scripts}, $pkgscript);
+                if (-e $scriptpath && (((stat $scriptpath)[2] & 0500) != 0500)) {
+                    display("Making $pkgscript script executable", $options{quiet});
+                    chmod 0755, $scriptpath;
+                }
+            }
+        }
 
         # build the pkg
-        build_pkg(build_info, options)
+        build_pkg($build_info);
 
         # export bom info if requested
-        if options.export_bom_info:
-            export_bom_info(build_info, options)
+        export_bom_info($build_info) if $options{export_bom_info};
 
         # convert pkg to distribution-style if requested
-        if build_info['distribution_style']:
-            build_distribution_pkg(build_info, options)
+        build_distribution_pkg($build_info) if $build_info->{distribution_style};
 
         # notarize the pkg
-        if 'notarization_info' in build_info and not options.skip_notarization and not options.skip_signing:
-            try:
-                request_id = upload_to_notary(build_info, options)
-                if not options.skip_stapling and wait_for_notarization(
-                    request_id, build_info, options
-                ):
-                    staple(build_info, options)
-            except MunkiPkgError as err:
-                print("ERROR: %s" % err, file=sys.stderr)
-                return -1
+        if (exists $build_info->{notarization_info}
+                && !$options{skip_notarization} && !$options{skip_signing}) {
+            my $ok = eval {
+                my $request_id = upload_to_notary($build_info);
+                if (!$options{skip_stapling}
+                        && wait_for_notarization($request_id, $build_info)) {
+                    staple($build_info);
+                }
+                1;
+            };
+            if (!$ok) { my $e = $@; $e =~ s/\s+\z//; print STDERR "ERROR: $e\n"; return -1; }
+        }
 
         # cleanup temp dir
-        _ = subprocess.call(["/bin/rm", "-rf", build_info['tmpdir']])
-        return 0
+        remove_path($build_info->{tmpdir});
+        return 0;
+    };
 
-    except BuildError as err:
-        print('ERROR: %s' % err, file=sys.stderr)
-        if build_info.get('tmpdir'):
-            # cleanup temp dir
-            _ = subprocess.call(["/bin/rm", "-rf", build_info['tmpdir']])
-        return -1
+    if (!defined $result) {
+        my $err = $@;
+        if (ref $err && $err->isa('BuildError')) {
+            print STDERR "ERROR: $err\n";
+            if ($build_info->{tmpdir}) {
+                # cleanup temp dir
+                remove_path($build_info->{tmpdir});
+            }
+            return -1;
+        }
+        die $err;   # re-raise anything unexpected
+    }
+    return $result;
+}
 
+sub get_pkginfo_attr {
+    # Returns value for attribute_name from PackageInfo dom
+    # Perl port: NSXMLDocument via the bridge instead of xml.dom.minidom.
+    my ($package_info_file, $attribute_name) = @_;
+    my $url = NSURL->fileURLWithPath_($package_info_file);
+    my $err = 0;
+    my $doc = NSXMLDocument->alloc->initWithContentsOfURL_options_error_($url, 0, \$err);
+    return undef if _ns_is_nil($doc);
+    my $root = $doc->rootElement;   # <pkg-info>
+    return undef if _ns_is_nil($root);
+    my $attr = $root->attributeForName_(NSString->stringWithUTF8String_($attribute_name));
+    return undef if _ns_is_nil($attr);
+    return $attr->stringValue->UTF8String;
+}
 
-def get_pkginfo_attr(pkginfo_dom, attribute_name):
-    """Returns value for attribute_name from PackageInfo dom"""
-    pkgrefs = pkginfo_dom.getElementsByTagName('pkg-info')
-    if pkgrefs:
-        for ref in pkgrefs:
-            keys = list(ref.attributes.keys())
-            if attribute_name in keys:
-                return ref.attributes[attribute_name].value
-    return None
+sub expand_payload {
+    # expand Payload if present
+    my ($project_dir) = @_;
+    my $payload_file    = path_join($project_dir, 'Payload');
+    my $payload_archive = path_join($project_dir, 'Payload.cpio.gz');
+    my $payload_dir     = path_join($project_dir, 'payload');
+    if (-e $payload_file) {
+        my $ok = eval {
+            rename $payload_file, $payload_archive or die "$!\n";
+            mkdir $payload_dir or die "$!\n";
+            1;
+        };
+        if (!$ok) { my $e = $@; $e =~ s/\s+\z//; die PkgImportError->new($e); }
+        my $retcode = call([DITTO, '-x', $payload_archive, $payload_dir]);
+        if ($retcode) { die PkgImportError->new("Ditto failed to expand Payload"); }
+        unlink_if_possible($payload_archive);
+    }
+}
 
+sub convert_packageinfo {
+    # parse PackageInfo file and create build-info file
+    my ($pkg_path, $project_dir) = @_;
+    my $package_info_file = path_join($project_dir, 'PackageInfo');
 
-def expand_payload(project_dir):
-    '''expand Payload if present'''
-    payload_file = os.path.join(project_dir, 'Payload')
-    payload_archive = os.path.join(project_dir, 'Payload.cpio.gz')
-    payload_dir = os.path.join(project_dir, 'payload')
-    if os.path.exists(payload_file):
-        try:
-            os.rename(payload_file, payload_archive)
-            os.mkdir(payload_dir)
-        except OSError as err:
-            raise PkgImportError(err)
-        cmd = [DITTO, '-x', payload_archive, payload_dir]
-        retcode = subprocess.call(cmd)
-        if retcode:
-            raise PkgImportError("Ditto failed to expand Payload")
-        unlink_if_possible(payload_archive)
+    my %build_info;
+    $build_info{identifier}       = get_pkginfo_attr($package_info_file, 'identifier') // '';
+    $build_info{version}          = get_pkginfo_attr($package_info_file, 'version') // '1.0';
+    $build_info{install_location} = get_pkginfo_attr($package_info_file, 'install-location') // '/';
+    $build_info{postinstall_action} = get_pkginfo_attr($package_info_file, 'postinstall-action') // 'none';
+    my $px = get_pkginfo_attr($package_info_file, 'preserve-xattr') // '';
+    $build_info{preserve_xattr}   = ($px eq 'true') ? JSON::PP::true : JSON::PP::false;
+    $build_info{name}             = File::Basename::basename($pkg_path);
+    $build_info{ownership}        = 'preserve' if non_recommended_permissions_in_bom($project_dir);
 
+    my $distribution_file = path_join($project_dir, 'Distribution');
+    $build_info{distribution_style} = (-e $distribution_file) ? JSON::PP::true : JSON::PP::false;
 
-def convert_packageinfo(pkg_path, project_dir, options):
-    '''parse PackageInfo file and create build-info file'''
-    package_info_file = os.path.join(project_dir, 'PackageInfo')
+    write_build_info(\%build_info, $project_dir);
+    unlink_if_possible($package_info_file);
+}
 
-    pkginfo = minidom.parse(package_info_file)
-    build_info = {}
+sub convert_info_plist {
+    # Read bundle pkg Info.plist and create build-info file
+    my ($pkg_path, $project_dir) = @_;
+    my $info_plist = path_join($pkg_path, 'Contents/Info.plist');
+    my $info = readPlist($info_plist);
+    my %build_info;
 
-    build_info['identifier'] = get_pkginfo_attr(pkginfo, 'identifier') or ''
-    build_info['version'] = get_pkginfo_attr(pkginfo, 'version') or '1.0'
-    build_info['install_location'] = get_pkginfo_attr(
-        pkginfo, 'install-location') or '/'
-    build_info['postinstall_action'] = get_pkginfo_attr(
-        pkginfo, 'postinstall-action') or 'none'
-    build_info['preserve_xattr'] = get_pkginfo_attr(
-        pkginfo, 'preserve-xattr') == "true"
-    build_info['name'] = os.path.basename(pkg_path)
-    if non_recommended_permissions_in_bom(project_dir):
-        build_info['ownership'] = 'preserve'
+    $build_info{identifier} = $info->{CFBundleIdentifier} // '';
+    $build_info{version} = $info->{CFBundleShortVersionString}
+        || $info->{CFBundleVersion} || '1.0';
+    $build_info{install_location} = $info->{IFPkgFlagDefaultLocation} || '/';
+    $build_info{postinstall_action} = 'none';
+    my $ra = $info->{IFPkgFlagRestartAction} // '';
+    $build_info{postinstall_action} = 'restart'
+        if grep { $_ eq $ra } ('RequiredRestart', 'RecommendedRestart');
+    $build_info{postinstall_action} = 'logout'
+        if grep { $_ eq $ra } ('RequiredLogout', 'RecommendedLogout');
+    $build_info{name} = File::Basename::basename($pkg_path);
+    $build_info{ownership} = 'preserve' if non_recommended_permissions_in_bom($project_dir);
+    write_build_info(\%build_info, $project_dir);
+}
 
-    distribution_file = os.path.join(project_dir, 'Distribution')
-    build_info['distribution_style'] = os.path.exists(distribution_file)
-
-    write_build_info(build_info, project_dir, options)
-    unlink_if_possible(package_info_file)
-
-
-def convert_info_plist(pkg_path, project_dir, options):
-    '''Read bundle pkg Info.plist and create build-info file'''
-    info_plist = os.path.join(pkg_path, 'Contents/Info.plist')
-    info = readPlist(info_plist)
-    build_info = {}
-
-    build_info['identifier'] = info.get('CFBundleIdentifier', '')
-    build_info['version'] = (info.get('CFBundleShortVersionString') or
-                             info.get('CFBundleVersion') or '1.0')
-    build_info['install_location'] = info.get('IFPkgFlagDefaultLocation') or '/'
-    build_info['postinstall_action'] = 'none'
-    if (info.get('IFPkgFlagRestartAction') in
-            ['RequiredRestart', 'RecommendedRestart']):
-        build_info['postinstall_action'] = 'restart'
-    if (info.get('IFPkgFlagRestartAction') in
-            ['RequiredLogout', 'RecommendedLogout']):
-        build_info['postinstall_action'] = 'logout'
-    build_info['name'] = os.path.basename(pkg_path)
-    if non_recommended_permissions_in_bom(project_dir):
-        build_info['ownership'] = 'preserve'
-    write_build_info(build_info, project_dir, options)
-
-
-def handle_distribution_pkg(project_dir):
-    '''If the expanded pkg is a distribution pkg, handle this case'''
-    distribution_file = os.path.join(project_dir, 'Distribution')
-    if os.path.exists(distribution_file):
+sub handle_distribution_pkg {
+    # If the expanded pkg is a distribution pkg, handle this case
+    my ($project_dir) = @_;
+    my $distribution_file = path_join($project_dir, 'Distribution');
+    if (-e $distribution_file) {
         # we have a Distribution-style pkg here
         # look for a _single_ *.pkg dir
-        pkgs_pattern = os.path.join(project_dir, '*.pkg')
-        pkgs = glob.glob(pkgs_pattern)
-        if len(pkgs) != 1:
-            raise PkgImportError(
+        my @pkgs = bsd_glob(path_join($project_dir, '*.pkg'));
+        if (@pkgs != 1) {
+            die PkgImportError->new(
                 "Distribution packages to be imported must contain exactly "
-                "one component package! Found: %s" % pkgs)
+                . "one component package! Found: [" . join(", ", map { "'$_'" } @pkgs) . "]");
+        }
         # move items of interest
-        pkg = pkgs[0]
-        for item in ['Bom', 'PackageInfo', 'Payload', 'Scripts']:
-            source_path = os.path.join(pkg, item)
-            if os.path.exists(source_path):
-                dest_path = os.path.join(project_dir, item)
-                try:
-                    os.rename(source_path, dest_path)
-                except OSError as err:
-                    raise PkgImportError(err)
-        try:
-            os.rmdir(pkg)
-        except OSError:
-            # we don't really care
-            pass
+        my $pkg = $pkgs[0];
+        for my $item ('Bom', 'PackageInfo', 'Payload', 'Scripts') {
+            my $source_path = path_join($pkg, $item);
+            if (-e $source_path) {
+                my $dest_path = path_join($project_dir, $item);
+                rename $source_path, $dest_path or die PkgImportError->new($!);
+            }
+        }
+        # we don't really care if this fails
+        rmdir $pkg;
+    }
+}
 
+sub script_names {
+    # Return a list of known script names for bundle-style packages.
+    # If kind is 'pre' or 'post', return just the pre or post names
+    my ($kind) = @_;
+    $kind = 'all' unless defined $kind;
+    my @pre_script_names  = ('preflight', 'preinstall', 'preupgrade');
+    my @post_script_names = ('postflight', 'postinstall', 'postupgrade');
+    return @pre_script_names  if $kind eq 'pre';
+    return @post_script_names if $kind eq 'post';
+    return (@pre_script_names, @post_script_names);
+}
 
-def script_names(kind='all'):
-    '''Return a list of known script names for bundle-style packages.
-    If kind is 'pre' or 'post', return just the pre or post names'''
-    pre_script_names = ['preflight', 'preinstall', 'preupgrade']
-    post_script_names = ['postflight', 'postinstall', 'postupgrade']
-    if kind == 'pre':
-        return pre_script_names
-    if kind == 'post':
-        return post_script_names
-    return pre_script_names + post_script_names
-
-
-def copy_bundle_pkg_scripts(pkg_path, project_dir, options):
-    '''Copies scripts and other items to project scripts directory'''
+sub copy_bundle_pkg_scripts {
+    # Copies scripts and other items to project scripts directory
+    my ($pkg_path, $project_dir) = @_;
     # if any of the known script names are in the Resources folder,
     # copy things that aren't *.lproj and package_version from
     # Resources to project_dir/scripts
-
-    resources_dir = os.path.join(pkg_path, 'Contents/Resources')
-    resources_items = os.listdir(resources_dir)
+    my $resources_dir = path_join($pkg_path, 'Contents/Resources');
+    opendir(my $rdh, $resources_dir) or return;
+    my @resources_items = grep { $_ ne '.' && $_ ne '..' } readdir $rdh;
+    closedir $rdh;
 
     # does resources_dir contain any of the known script_names?
-    if set(resources_items).intersection(set(script_names())):
-        scripts_dir = os.path.join(project_dir, 'scripts')
-        os.mkdir(scripts_dir)
-        for item in resources_items:
-            if item.endswith('.lproj') or item == "package_version":
-                # we don't need to copy these to scripts dir
-                continue
-            source_item = os.path.join(resources_dir, item)
-            dest_item = os.path.join(scripts_dir, item)
-            if os.path.isdir(source_item):
-                shutil.copytree(source_item, dest_item)
-            else:
-                shutil.copy2(source_item, dest_item)
+    my %known = map { $_ => 1 } script_names();
+    if (grep { $known{$_} } @resources_items) {
+        my $scripts_dir = path_join($project_dir, 'scripts');
+        mkdir $scripts_dir;
+        for my $item (@resources_items) {
+            # we don't need to copy these to scripts dir
+            next if $item =~ /\.lproj$/ || $item eq "package_version";
+            my $source_item = path_join($resources_dir, $item);
+            my $dest_item   = path_join($scripts_dir, $item);
+            if (-d $source_item) { dircopy($source_item, $dest_item); }
+            else {
+                File::Copy::copy($source_item, $dest_item);
+                chmod((stat $source_item)[2] & 07777, $dest_item);
+            }
+        }
 
         # rename pre- and post- scripts or print a warning
-        for kind in ['pre', 'post']:
-            found_scripts = [item for item in os.listdir(scripts_dir)
-                             if item in script_names(kind)]
-            supported_name = kind + 'install'
-            if len(found_scripts) == 1 and found_scripts[0] != supported_name:
+        for my $kind ('pre', 'post') {
+            my %kn = map { $_ => 1 } script_names($kind);
+            opendir(my $sdh, $scripts_dir);
+            my @found_scripts = grep { $kn{$_} } readdir $sdh;
+            closedir $sdh;
+            my $supported_name = $kind . 'install';
+            if (@found_scripts == 1 && $found_scripts[0] ne $supported_name) {
                 # rename it
-                current_script_path = os.path.join(
-                    scripts_dir, found_scripts[0])
-                new_script_path = os.path.join(scripts_dir, supported_name)
-                display('Renaming %s script to %s'
-                        % (found_scripts[0], supported_name), options.quiet)
-                os.rename(current_script_path, new_script_path)
-            elif len(found_scripts) > 1:
-                print("WARNING: Multiple %sXXXXXX scripts found. "
-                      "Flat packages support only '%sinstall'." % (kind, kind),
-                      file=sys.stderr)
+                display("Renaming $found_scripts[0] script to $supported_name", $options{quiet});
+                rename path_join($scripts_dir, $found_scripts[0]),
+                       path_join($scripts_dir, $supported_name);
+            } elsif (@found_scripts > 1) {
+                print STDERR "WARNING: Multiple ${kind}XXXXXX scripts found. "
+                    . "Flat packages support only '${kind}install'.\n";
+            }
+        }
+    }
+}
 
-
-def import_bundle_pkg(pkg_path, project_dir, options):
-    '''Imports a bundle-style package'''
-    try:
-        dist_files = glob.glob(os.path.join(pkg_path, 'Contents/*.dist'))
-        if dist_files:
-            raise PkgImportError(
+sub import_bundle_pkg {
+    # Imports a bundle-style package
+    my ($pkg_path, $project_dir) = @_;
+    my $result = eval {
+        my @dist_files = bsd_glob(path_join($pkg_path, 'Contents/*.dist'));
+        if (@dist_files) {
+            die PkgImportError->new(
                 "Bundle-style distribution packages are not supported for "
-                'import. Consider importing the included sub-package(s).')
+                . "import. Consider importing the included sub-package(s).");
+        }
 
         # create the project dir
-        os.mkdir(project_dir)
+        mkdir $project_dir;
 
         # export Bom.txt
-        bomfile = os.path.join(pkg_path, 'Contents/Archive.bom')
-        export_bom(bomfile, project_dir)
+        my $bomfile = path_join($pkg_path, 'Contents/Archive.bom');
+        export_bom($bomfile, $project_dir);
 
         # export Archive as payload
-        archive = os.path.join(pkg_path, 'Contents/Archive.pax.gz')
-        payload_dir = os.path.join(project_dir, 'payload')
-        try:
-            os.mkdir(payload_dir)
-        except OSError as err:
-            raise PkgImportError(err)
-        cmd = [DITTO, '-x', archive, payload_dir]
-        retcode = subprocess.call(cmd)
-        if retcode:
-            raise PkgImportError("Ditto failed to expand Payload")
+        my $archive = path_join($pkg_path, 'Contents/Archive.pax.gz');
+        my $payload_dir = path_join($project_dir, 'payload');
+        eval { mkdir $payload_dir or die "$!\n"; 1 }
+            or do { my $e = $@; $e =~ s/\s+\z//; die PkgImportError->new($e); };
+        my $retcode = call([DITTO, '-x', $archive, $payload_dir]);
+        if ($retcode) { die PkgImportError->new("Ditto failed to expand Payload"); }
 
-        copy_bundle_pkg_scripts(pkg_path, project_dir, options)
-        convert_info_plist(pkg_path, project_dir, options)
-        if (non_recommended_permissions_in_bom(project_dir) and
-                os.geteuid() != 0):
-            print(
-                '\nWARNING: package contains non-default owner/group on some '
-                'files. build-info ownership has been set to "preserve". '
-                '\nCheck the bom for accuracy.'
-                '\nRun munkipkg --sync with sudo to apply the correct owner '
-                'and group to payload files.\n', file=sys.stderr
-            )
-        sync_from_bom_info(project_dir, options)
-        create_default_gitignore(project_dir)
-        display("Created new package project at %s"
-                % project_dir, options.quiet)
-        return 0
-    except (MunkiPkgError, OSError) as err:
-        print('ERROR: %s' % err, file=sys.stderr)
-        return -1
+        copy_bundle_pkg_scripts($pkg_path, $project_dir);
+        convert_info_plist($pkg_path, $project_dir);
+        if (non_recommended_permissions_in_bom($project_dir) && $> != 0) {
+            print STDERR "\nWARNING: package contains non-default owner/group on some "
+                . "files. build-info ownership has been set to \"preserve\". "
+                . "\nCheck the bom for accuracy."
+                . "\nRun munkipkg --sync with sudo to apply the correct owner "
+                . "and group to payload files.\n\n";
+        }
+        sync_from_bom_info($project_dir);
+        create_default_gitignore($project_dir);
+        display("Created new package project at $project_dir", $options{quiet});
+        0;
+    };
+    if (!defined $result) { my $e = $@; $e =~ s/\s+\z//; print STDERR "ERROR: $e\n"; return -1; }
+    return $result;
+}
 
-
-def import_flat_pkg(pkg_path, project_dir, options):
-    '''Imports a flat package'''
-    try:
+sub import_flat_pkg {
+    # Imports a flat package
+    my ($pkg_path, $project_dir) = @_;
+    my $result = eval {
         # expand flat pkg into project dir
-        cmd = [PKGUTIL, '--expand', pkg_path, project_dir]
-        retcode = subprocess.call(cmd)
-        if retcode:
-            raise PkgImportError("Could not expand package.")
+        my $retcode = call([PKGUTIL, '--expand', $pkg_path, $project_dir]);
+        if ($retcode) { die PkgImportError->new("Could not expand package."); }
 
-        handle_distribution_pkg(project_dir)
+        handle_distribution_pkg($project_dir);
 
         # export Bom.txt
-        bomfile = os.path.join(project_dir, 'Bom')
-        export_bom(bomfile, project_dir)
-        unlink_if_possible(bomfile)
+        my $bomfile = path_join($project_dir, 'Bom');
+        export_bom($bomfile, $project_dir);
+        unlink_if_possible($bomfile);
 
         # rename Scripts directory
-        uppercase_scripts_dir = os.path.join(project_dir, 'Scripts')
-        lowercase_scripts_dir = os.path.join(project_dir, 'scripts')
-        if os.path.exists(uppercase_scripts_dir):
-            os.rename(uppercase_scripts_dir, lowercase_scripts_dir)
+        my $uppercase_scripts_dir = path_join($project_dir, 'Scripts');
+        my $lowercase_scripts_dir = path_join($project_dir, 'scripts');
+        if (-e $uppercase_scripts_dir) {
+            rename $uppercase_scripts_dir, $lowercase_scripts_dir;
+        }
 
-        expand_payload(project_dir)
-        convert_packageinfo(pkg_path, project_dir, options)
-        if (non_recommended_permissions_in_bom(project_dir) and
-                os.geteuid() != 0):
-            print(
-                '\nWARNING: package contains non-default owner/group on some '
-                'files. build-info ownership has been set to "preserve". '
-                '\nCheck the bom for accuracy.'
-                '\nRun munkipkg --sync with sudo to apply the correct owner '
-                'and group to payload files.\n', file=sys.stderr
-            )
-        sync_from_bom_info(project_dir, options)
-        create_default_gitignore(project_dir)
-        display("Created new package project at %s"
-                % project_dir, options.quiet)
-        return 0
-    except (MunkiPkgError, OSError) as err:
-        print('ERROR: %s' % err, file=sys.stderr)
-        return -1
+        expand_payload($project_dir);
+        convert_packageinfo($pkg_path, $project_dir);
+        if (non_recommended_permissions_in_bom($project_dir) && $> != 0) {
+            print STDERR "\nWARNING: package contains non-default owner/group on some "
+                . "files. build-info ownership has been set to \"preserve\". "
+                . "\nCheck the bom for accuracy."
+                . "\nRun munkipkg --sync with sudo to apply the correct owner "
+                . "and group to payload files.\n\n";
+        }
+        sync_from_bom_info($project_dir);
+        create_default_gitignore($project_dir);
+        display("Created new package project at $project_dir", $options{quiet});
+        0;
+    };
+    if (!defined $result) { my $e = $@; $e =~ s/\s+\z//; print STDERR "ERROR: $e\n"; return -1; }
+    return $result;
+}
 
+sub import_pkg {
+    # Imports an existing pkg into a project directory. Returns a
+    # boolean to indicate success or failure.
+    my ($pkg_path, $project_dir) = @_;
+    if (-e $project_dir) {
+        print STDERR "ERROR: Directory $project_dir already exists.\n";
+        # Perl port: Python returns False here; sys.exit(False) == exit 0, so
+        # we return 0 to reproduce that exit code faithfully.
+        return 0;
+    }
+    return import_bundle_pkg($pkg_path, $project_dir) if -d $pkg_path;
+    return import_flat_pkg($pkg_path, $project_dir);
+}
 
-def import_pkg(pkg_path, project_dir, options):
-    '''Imports an existing pkg into a project directory. Returns a
-    boolean to indicate success or failure.'''
-    if os.path.exists(project_dir):
-        print("ERROR: Directory %s already exists." % project_dir,
-              file=sys.stderr)
-        return False
+sub valid_project_dir {
+    # validate project dir. Returns a boolean
+    my ($project_dir) = @_;
+    if (!-e $project_dir) {
+        print STDERR "ERROR: $project_dir: Project not found.\n";
+        return 0;
+    } elsif (!-d $project_dir) {
+        print STDERR "ERROR: $project_dir is not a directory.\n";
+        return 0;
+    }
+    return 1;
+}
 
-    if os.path.isdir(pkg_path):
-        return import_bundle_pkg(pkg_path, project_dir, options)
-    return import_flat_pkg(pkg_path, project_dir, options)
+# Perl port: optparse's get_usage(). %prog -> basename of $0.
+sub get_usage {
+    my $prog = File::Basename::basename($0);
+    return "Usage: $prog [options] pkg_project_directory\n"
+         . "       A tool for building a package from the contents of a\n"
+         . "       pkg_project_directory.\n";
+}
 
+# Perl port: optparse's formatted --help text (80-column layout, matching the
+# option set below). Static except for the program name in the Usage line.
+sub help_text {
+    return get_usage() . "\n" . <<'EOH';
+Options:
+  --version            show program's version number and exit
+  -h, --help           show this help message and exit
+  --create             Creates a new empty project with default settings at
+                       given path.
+  --import=PKG         Imports an existing package PKG as a package project,
+                       creating pkg_project_directory.
+  --json               Create build-info file in JSON format. Useful only with
+                       --create and --import options.
+  --yaml               Create build-info file in YAML format. Useful only with
+                       --create and --import options.
+  --export-bom-info    Extracts the Bill-Of-Materials file from the output
+                       package and exports it as Bom.txt under the
+                       pkg_project_folder. Useful for tracking owner, group
+                       and mode of the payload in git.
+  --sync               Use Bom.txt to set modes of files in payload directory
+                       and create missing empty directories. Useful after a
+                       git clone or pull. No build is performed.
+  --quiet              Inhibits status messages on stdout. Any error messages
+                       are still sent to stderr.
+  -f, --force          Forces creation of project directory if it already
+                       exists.
+  --skip-signing       Skips whole signing process when signing is specified
+                       in build-info
+  --skip-notarization  Skips whole notarization process when notarization is
+                       specified in build-info
+  --skip-stapling      Skips only stapling part of notarization process when
+                       notarization is specified in build-info
+EOH
+}
 
-def valid_project_dir(project_dir):
-    '''validate project dir. Returns a boolean'''
-    if not os.path.exists(project_dir):
-        print(("ERROR: %s: Project not found." % project_dir), file=sys.stderr)
-        return False
-    elif not os.path.isdir(project_dir):
-        print(("ERROR: %s is not a directory." % project_dir), file=sys.stderr)
-        return False
-    return True
+# Perl port: optparse replacement. Fills %options, returns positional @args.
+sub parse_options {
+    %options = (
+        create => 0, import_pkg => undef, json => 0, yaml => 0,
+        export_bom_info => 0, sync => 0, quiet => 0, force => 0,
+        skip_signing => 0, skip_notarization => 0, skip_stapling => 0,
+    );
+    my ($show_version, $show_help) = (0, 0);
+    Getopt::Long::GetOptions(
+        'create'            => \$options{create},
+        'import=s'          => \$options{import_pkg},
+        'json'              => \$options{json},
+        'yaml'              => \$options{yaml},
+        'export-bom-info'   => \$options{export_bom_info},
+        'sync'              => \$options{sync},
+        'quiet'             => \$options{quiet},
+        'force|f'           => \$options{force},
+        'skip-signing'      => \$options{skip_signing},
+        'skip-notarization' => \$options{skip_notarization},
+        'skip-stapling'     => \$options{skip_stapling},
+        'version'           => \$show_version,
+        'help|h'            => \$show_help,
+    ) or do {
+        # optparse prints usage to stderr and exits 2 on a bad option.
+        print STDERR get_usage();
+        exit 2;
+    };
+    if ($show_version) { print "$VERSION_STR\n"; exit 0; }
+    if ($show_help)    { print help_text(); exit 0; }
+    return @ARGV;
+}
 
+sub main {
+    my @arguments = parse_options();
 
-def main():
-    '''Main'''
-    usage = """usage: %prog [options] pkg_project_directory
-       A tool for building a package from the contents of a
-       pkg_project_directory."""
-    parser = optparse.OptionParser(usage=usage, version=VERSION)
-    parser.add_option('--create', action='store_true',
-                      help='Creates a new empty project with default settings '
-                           'at given path.')
-    parser.add_option('--import', dest='import_pkg', metavar='PKG',
-                      help='Imports an existing package PKG as a package '
-                      'project, creating pkg_project_directory.')
-    parser.add_option('--json', action='store_true',
-                      help='Create build-info file in JSON format. '
-                           'Useful only with --create and --import options.')
-    parser.add_option('--yaml', action='store_true',
-                      help='Create build-info file in YAML format. '
-                           'Useful only with --create and --import options.')
-    parser.add_option('--export-bom-info', action='store_true',
-                      help='Extracts the Bill-Of-Materials file from the '
-                           'output package and exports it as Bom.txt under the '
-                           'pkg_project_folder. Useful for tracking owner, '
-                           'group and mode of the payload in git.')
-    parser.add_option('--sync', action='store_true',
-                      help='Use Bom.txt to set modes of files in payload '
-                           'directory and create missing empty directories. '
-                           'Useful after a git clone or pull. No build is '
-                           'performed.')
-    parser.add_option('--quiet', action='store_true',
-                      help='Inhibits status messages on stdout. '
-                           'Any error messages are still sent to stderr.')
-    parser.add_option('-f', '--force', action='store_true',
-                      help='Forces creation of project directory if it already '
-                           'exists. ')
-    parser.add_option('--skip-signing', action='store_true',
-                      help='Skips whole signing process when signing is '
-                           'specified in build-info')
-    parser.add_option('--skip-notarization', action='store_true',
-                      help='Skips whole notarization process when '
-                           'notarization is specified in build-info')
-    parser.add_option('--skip-stapling', action='store_true',
-                      help='Skips only stapling part of notarization process '
-                           'when notarization is specified in build-info')
-    options, arguments = parser.parse_args()
+    if (!@arguments) {
+        print get_usage() . "\n";   # optparse print_usage(): print(get_usage())
+        exit 0;
+    }
 
-    if not arguments:
-        parser.print_usage()
-        sys.exit(0)
+    if (@arguments > 1) {
+        print STDERR "ERROR: Only a single package project can be built at a time!\n";
+        exit exit_status(-1);
+    }
 
-    if len(arguments) > 1:
-        print("ERROR: Only a single package project can be built at a time!",
-              file=sys.stderr)
-        sys.exit(-1)
+    if ($options{json} && $options{yaml}) {
+        print STDERR "ERROR: Only a single build-info file can be built at a time!\n";
+        exit exit_status(-1);
+    }
 
-    if options.json and options.yaml:
-        print("ERROR: Only a single build-info file can be built at a time!",
-              file=sys.stderr)
-        sys.exit(-1)
+    if ($options{yaml} && !$YAML_INSTALLED) {
+        # Perl port: the Python message referred to PyYAML/pip; give a message
+        # that makes sense for the Perl tool.
+        print STDERR "ERROR: The 'YAML' Perl module is not available, "
+            . "so YAML build-info files cannot be read or written.\n";
+        exit exit_status(-1);
+    }
 
-    if options.yaml and not YAML_INSTALLED:
-        print(
-            "ERROR: PyYAML missing. Please run 'sudo easy_install pip' "
-            "followed by 'sudo pip install -r requirements.txt'",
-            file=sys.stderr
-        )
-        sys.exit(-1)
+    if ($options{create}) {
+        my $result = create_template_project($arguments[0]);
+        exit exit_status($result);
+    }
 
-    if options.create:
-        result = create_template_project(arguments[0], options)
-        sys.exit(result)
-
-    if options.import_pkg:
-        result = import_pkg(options.import_pkg, arguments[0], options)
-        sys.exit(result)
+    if (defined $options{import_pkg}) {
+        my $result = import_pkg($options{import_pkg}, $arguments[0]);
+        exit exit_status($result);
+    }
 
     # options past here require a valid project_dir
-    if not valid_project_dir(arguments[0]):
-        sys.exit(-1)
+    if (!valid_project_dir($arguments[0])) { exit exit_status(-1); }
 
-    if options.sync:
-        result = sync_from_bom_info(arguments[0], options)
-    else:
-        result = build(arguments[0], options)
-    sys.exit(result)
+    my $result;
+    if ($options{sync}) { $result = sync_from_bom_info($arguments[0]); }
+    else { $result = build($arguments[0]); }
+    exit exit_status($result);
+}
 
-if __name__ == '__main__':
-    main()
+main() unless caller;
+1;

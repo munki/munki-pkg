@@ -1,5 +1,19 @@
 # munkipkg
 
+## Important news
+
+TL;DR: `munkipkg` is no longer in active development, Consider using SwiftPkg instead: https://github.com/codecarton/swiftpkg
+
+With the removal of Python from a default install of macOS, admins have had to install Python to use munkipkg. Since `munkipkg` was often used to build package for use with [Munki](http://github.com/munki/munki), and since, up until a year ago, Munki itself shipped a full Python install capable of running `munkipkg`, for Munki admins at least, the Python requirement wasn't a major friction point.
+
+Munki 7 shipped in October 2025. It contained a complete rewrite of the command-line tools as compiled executables written in Swift, and no longer included a Python interpreter. Admins wishing to use `munkipkg` needed to find, install, and maintain their own Python interpreter.
+
+My intention was to port `munkipkg` to Swift. I even started the process. But I just did not find the time and motivation to complete the process. Fortuantely, other people did. Rod Christiansen forked `munkipkg`, porting it to Swift, and Jordan Calhoun did as well. Recently, they merged their efforts into https://github.com/codecarton/swiftpkg.
+
+`swiftpkg` works with your existing `munkipkg` projects, and the command-line tool has the same core feature set that `munkipkg` has, so you should be able to switch tools easily.
+
+With this bit of news, I plan to put the `munkipkg` project into "Archive" mode.
+
 ## Introduction
 
 munkipkg is a tool for building packages in a consistent, repeatable manner from source files and scripts in a project directory.
